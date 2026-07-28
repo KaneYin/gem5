@@ -87,11 +87,13 @@ def make_prefetcher(kind):
 def make_mem_ctrl(config):
     """config in {B0,B1,B2,DPRH}: only the scheduler-layer flags differ.
 
-    Phase 0 note: the three scheduler-layer flags (enable_filter, demand_first,
-    enable_dprh) are MemCtrl params that DO NOT EXIST until Tasks 6-8. Per the
-    plan (Task 3 Step 1 note), they are intentionally OMITTED here and appended
-    in Task 8 Step 2. Until then this returns a controller identical to stock
-    FR-FCFS gem5, so B0 (which needs none of the flags) runs cleanly.
+    The three scheduler-layer flags (enable_filter, demand_first, enable_dprh)
+    are MemCtrl params added in Tasks 6-8 and set here per config profile:
+      B0   -> all off (stock FR-FCFS, no prefetcher via run_se.py)
+      B1   -> enable_filter (filter accepts stream) + FR-FCFS
+      B2   -> enable_filter + demand_first (demand-first FR-FCFS)
+      DPRH -> enable_filter + enable_dprh (gate is a Phase 0 no-op skeleton)
+    All default False in MemCtrl.py, so an unflagged build == stock gem5.
     """
     ctrl = MemCtrl()
     ctrl.dram = DDR4_2400_16x4(range=AddrRange("2GB"))  # D-A0b default
@@ -104,6 +106,11 @@ def make_mem_ctrl(config):
     ctrl.mem_sched_policy = "frfcfs"
     ctrl.read_buffer_size = 64
     ctrl.write_buffer_size = 64
+    # Scheduler-layer flags (params added in Tasks 6-8). Default-off keeps an
+    # unflagged build == stock gem5; here we set them per config profile.
+    ctrl.enable_filter = config in ("B1", "B2", "DPRH")
+    ctrl.demand_first = config == "B2"
+    ctrl.enable_dprh = config == "DPRH"
     return ctrl
 
 

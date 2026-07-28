@@ -620,6 +620,28 @@ MemCtrl::chooseNext(MemPacketQueue& queue, Tick extra_col_delay,
                 auto forced = dprhChooseNext(queue, extra_col_delay, mem_intr);
                 if (forced != queue.end()) { ret = forced; return ret; }
             }
+            if (demandFirst) {
+                // B2 baseline: prefer FR-FCFS restricted to demand reads when
+                // any demand is timing-legal; else fall through to full
+                // FR-FCFS (work-conserving). chooseNextFRFCFS is const and does
+                // not mutate the queue, so running it on a filtered sub-queue
+                // is safe (verified in DRAMInterface::chooseNextFRFCFS).
+                MemPacketQueue demandsOnly;
+                for (auto* mp : queue)
+                    if (!mp->pkt->req->isPrefetch()) demandsOnly.push_back(mp);
+                if (!demandsOnly.empty()) {
+                    Tick c;
+                    MemPacketQueue::iterator dsel;
+                    std::tie(dsel, c) = chooseNextFRFCFS(demandsOnly,
+                                                extra_col_delay, mem_intr);
+                    if (dsel != demandsOnly.end()) {
+                        // Map the selected packet back to the real queue
+                        // iterator (MemPacket* identity is unique).
+                        for (auto it = queue.begin(); it != queue.end(); ++it)
+                            if (*it == *dsel) { return it; }
+                    }
+                }
+            }
             Tick col_allowed_at;
             std::tie(ret, col_allowed_at)
                     = chooseNextFRFCFS(queue, extra_col_delay, mem_intr);
