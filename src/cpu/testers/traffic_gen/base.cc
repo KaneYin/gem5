@@ -417,7 +417,8 @@ BaseTrafficGen::createDram(Tick duration,
                            unsigned int nbr_of_banks,
                            unsigned int nbr_of_banks_util,
                            enums::AddrMap addr_mapping,
-                           unsigned int nbr_of_ranks)
+                           unsigned int nbr_of_ranks,
+                           bool tag_prefetch)
 {
     return std::shared_ptr<BaseGen>(new DramGen(*this, requestorId,
                                                 duration, start_addr,
@@ -429,7 +430,8 @@ BaseTrafficGen::createDram(Tick duration,
                                                 nbr_of_banks,
                                                 nbr_of_banks_util,
                                                 addr_mapping,
-                                                nbr_of_ranks));
+                                                nbr_of_ranks,
+                                                tag_prefetch));
 }
 
 std::shared_ptr<BaseGen>

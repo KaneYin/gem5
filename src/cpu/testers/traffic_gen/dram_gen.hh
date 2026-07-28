@@ -94,7 +94,8 @@ class DramGen : public RandomGen
             unsigned int num_seq_pkts, unsigned int page_size,
             unsigned int nbr_of_banks_DRAM, unsigned int nbr_of_banks_util,
             enums::AddrMap addr_mapping,
-            unsigned int nbr_of_ranks);
+            unsigned int nbr_of_ranks,
+            bool tag_prefetch = false);
 
     PacketPtr getNextPacket();
 
@@ -146,6 +147,9 @@ class DramGen : public RandomGen
 
     /** Number of ranks to be utilized for a given configuration */
     const unsigned int nbrOfRanks;
+
+    /** DPRH R6: tag generated requests with Request::PREFETCH when true. */
+    const bool tagPrefetch;
 
 };
 

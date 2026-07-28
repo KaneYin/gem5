@@ -56,7 +56,8 @@ DramGen::DramGen(SimObject &obj,
                  unsigned int nbr_of_banks_DRAM,
                  unsigned int nbr_of_banks_util,
                  enums::AddrMap addr_mapping,
-                 unsigned int nbr_of_ranks)
+                 unsigned int nbr_of_ranks,
+                 bool tag_prefetch)
         : RandomGen(obj, requestor_id, _duration, start_addr, end_addr,
           _blocksize, cacheline_size, min_period, max_period,
           read_percent, data_limit),
@@ -68,7 +69,8 @@ DramGen::DramGen(SimObject &obj,
           nbrOfBanksDRAM(nbr_of_banks_DRAM),
           nbrOfBanksUtil(nbr_of_banks_util), addrMapping(addr_mapping),
           rankBits(floorLog2(nbr_of_ranks)),
-          nbrOfRanks(nbr_of_ranks)
+          nbrOfRanks(nbr_of_ranks),
+          tagPrefetch(tag_prefetch)
 {
     if (nbr_of_banks_util > nbr_of_banks_DRAM)
         fatal("Attempting to use more banks (%d) than "
@@ -128,8 +130,13 @@ DramGen::getNextPacket()
             isRead ? 'r' : 'w', addr, blocksize, countNumSeqPkts, numSeqPkts);
 
     // create a new request packet
+    // DPRH R6: optionally tag the request as a prefetch so the DRAM prefetch
+    // stream is visible as isPrefetch() at the MemCtrl (feeds V1 + the
+    // demand/prefetch stats). Default (tagPrefetch=false) is stock behavior.
+    Request::FlagsType req_flags = tagPrefetch ? Request::PREFETCH : 0;
     PacketPtr pkt = getPacket(addr, blocksize,
-                              isRead ? MemCmd::ReadReq : MemCmd::WriteReq);
+                              isRead ? MemCmd::ReadReq : MemCmd::WriteReq,
+                              req_flags);
 
     // add the amount of data manipulated to the total
     dataManipulated += blocksize;

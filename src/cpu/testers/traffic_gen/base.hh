@@ -280,7 +280,10 @@ class BaseTrafficGen : public ClockedObject
         unsigned int num_seq_pkts, unsigned int page_size,
         unsigned int nbr_of_banks, unsigned int nbr_of_banks_util,
         enums::AddrMap addr_mapping,
-        unsigned int nbr_of_ranks);
+        unsigned int nbr_of_ranks,
+        // DPRH R6: when true, tag generated requests with Request::PREFETCH so
+        // the DRAM prefetch stream is visible as prefetch at the MemCtrl.
+        bool tag_prefetch = false);
 
     std::shared_ptr<BaseGen> createDramRot(
         Tick duration,
