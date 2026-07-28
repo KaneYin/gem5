@@ -432,6 +432,13 @@ class MemCtrl : public qos::MemCtrl
     chooseNextFRFCFS(MemPacketQueue& queue, Tick extra_col_delay,
                     MemInterface* mem_intr);
 
+    /** DPRH eligibility gate (Phase 0: no-op unless enableDprh). Returns
+     *  an override selection, or queue.end() to defer to baseline FR-FCFS.
+     *  Real mechanism (research_plan.md §4) is Phase 2. */
+    MemPacketQueue::iterator dprhChooseNext(MemPacketQueue& queue,
+                                            Tick extra_col_delay,
+                                            MemInterface* mem_intr);
+
     /**
      * Calculate burst window aligned tick
      *
@@ -523,6 +530,16 @@ class MemCtrl : public qos::MemCtrl
      * values.
      */
     enums::MemSched memSchedPolicy;
+
+    /**
+     * DPRH scheduler-layer flags (Phase 0 seam). All default-off so an
+     * unflagged build reproduces stock gem5 exactly. Real mechanism is Phase 2.
+     */
+    bool enableDprh;
+    bool demandFirst;
+    bool enableFilter;
+    Cycles dprhAGuard;
+    unsigned dprhKp;
 
     /**
      * Pipeline latency of the controller frontend. The frontend

@@ -73,6 +73,11 @@ MemCtrl::MemCtrl(const MemCtrlParams &p) :
     minWritesPerSwitch(p.min_writes_per_switch),
     minReadsPerSwitch(p.min_reads_per_switch),
     memSchedPolicy(p.mem_sched_policy),
+    enableDprh(p.enable_dprh),
+    demandFirst(p.demand_first),
+    enableFilter(p.enable_filter),
+    dprhAGuard(p.dprh_a_guard),
+    dprhKp(p.dprh_kp),
     frontendLatency(p.static_frontend_latency),
     backendLatency(p.static_backend_latency),
     commandWindow(p.command_window),
@@ -587,6 +592,11 @@ MemCtrl::chooseNext(MemPacketQueue& queue, Tick extra_col_delay,
                 }
             }
         } else if (memSchedPolicy == enums::frfcfs) {
+            // DPRH seam: inert unless enableDprh (Phase 2 fills this in).
+            if (enableDprh) {
+                auto forced = dprhChooseNext(queue, extra_col_delay, mem_intr);
+                if (forced != queue.end()) { ret = forced; return ret; }
+            }
             Tick col_allowed_at;
             std::tie(ret, col_allowed_at)
                     = chooseNextFRFCFS(queue, extra_col_delay, mem_intr);
@@ -616,6 +626,17 @@ MemCtrl::chooseNextFRFCFS(MemPacketQueue& queue, Tick extra_col_delay,
     }
 
     return std::make_pair(selected_pkt_it, col_allowed_at);
+}
+
+MemPacketQueue::iterator
+MemCtrl::dprhChooseNext(MemPacketQueue& queue, Tick /*extra_col_delay*/,
+                        MemInterface* /*mem_intr*/)
+{
+    // Phase 0: skeleton only. The eligibility gate (research_plan.md §4) is
+    // implemented in Phase 2. Returning end() defers to baseline FR-FCFS,
+    // guaranteeing work conservation and byte-identical behavior when the
+    // gate finds nothing to harvest.
+    return queue.end();
 }
 
 void

@@ -92,6 +92,13 @@ class MemCtrl(QoSMemCtrl):
     # scheduler, address map and page policy
     mem_sched_policy = Param.MemSched("frfcfs", "Memory scheduling policy")
 
+    # --- DPRH scheduler-layer flags (Phase 0 seam; default-off == stock gem5) ---
+    enable_dprh = Param.Bool(False, "Enable DPRH eligibility gate (Phase 2)")
+    demand_first = Param.Bool(False, "B2 baseline: demand-first FR-FCFS")
+    enable_filter = Param.Bool(False, "Enable MSF-like read-queue filter")
+    dprh_a_guard = Param.Cycles(0, "Aged-demand guard threshold (Phase 3 sweep)")
+    dprh_kp = Param.Unsigned(4, "Consecutive-prefetch service cap (Phase 3 sweep)")
+
     # pipeline latency of the controller and PHY, split into a
     # frontend part and a backend part, with reads and writes serviced
     # by the queues only seeing the frontend contribution, and reads
