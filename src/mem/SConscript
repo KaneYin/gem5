@@ -105,10 +105,12 @@ Source('htm.cc')
 Source('serial_link.cc')
 Source('mem_delay.cc')
 Source('port_terminator.cc')
+Source('dprh_filter.cc')
 
 GTest('backdoor_manager.test', 'backdoor_manager.test.cc',
       'backdoor_manager.cc', with_tag('gem5_trace'))
 GTest('translation_gen.test', 'translation_gen.test.cc')
+GTest('dprh_filter.test', 'dprh_filter.test.cc', 'dprh_filter.cc')
 
 Source('translating_port_proxy.cc')
 Source('se_translating_port_proxy.cc')

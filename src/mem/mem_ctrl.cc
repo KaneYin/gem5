@@ -99,6 +99,13 @@ MemCtrl::MemCtrl(const MemCtrlParams &p) :
     if (p.disable_sanity_check) {
         port.disableSanityCheck();
     }
+
+    // Option B MSF-like filter: only instantiated when enabled, so an
+    // unflagged build allocates nothing and behaves as stock gem5.
+    if (enableFilter) {
+        dprhFilter = std::make_unique<DprhFilter>(
+            p.filter_epoch, (uint8_t)p.filter_accept_pct);
+    }
 }
 
 void
@@ -199,6 +206,22 @@ MemCtrl::addToReadQueue(PacketPtr pkt,
     assert(!pkt->isWrite());
 
     assert(pkt_count != 0);
+
+    // MSF-like filter (Option B). Demand-upgrade invariant: only prefetch
+    // packets are candidates for dropping; a demand to the same addr is never
+    // filtered here, and an in-flight prefetch matched by a later demand is
+    // handled by the existing isInWriteQueue / read-coalescing paths in
+    // recvTimingReq, not here. On drop we complete the packet via
+    // accessAndRespond -- the same "respond without a DRAM access" path gem5
+    // uses when a read is fully serviced by the write queue (see cc below) --
+    // so the upstream (L2) MSHR is freed.
+    if (enableFilter && pkt->req->isPrefetch()) {
+        if (!dprhFilter->accept()) {
+            ++stats.filterDroppedPrefetches;
+            accessAndRespond(pkt, frontendLatency, mem_intr);
+            return true;   // consumed; not enqueued
+        }
+    }
 
     // if the request size is larger than burst size, the pkt is split into
     // multiple packets
@@ -1216,6 +1239,8 @@ MemCtrl::CtrlStats::CtrlStats(MemCtrl &_ctrl)
              "the write queue"),
     ADD_STAT(servicedByWrQ, statistics::units::Count::get(),
              "Number of controller read bursts serviced by the write queue"),
+    ADD_STAT(filterDroppedPrefetches, statistics::units::Count::get(),
+             "DPRH Option B: prefetches dropped by the read-queue filter"),
     ADD_STAT(mergedWrBursts, statistics::units::Count::get(),
              "Number of controller write bursts merged with an existing one"),
 

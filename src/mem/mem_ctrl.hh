@@ -47,6 +47,7 @@
 #define __MEM_CTRL_HH__
 
 #include <deque>
+#include <memory>
 #include <string>
 #include <unordered_set>
 #include <utility>
@@ -55,6 +56,7 @@
 #include "base/callback.hh"
 #include "base/statistics.hh"
 #include "enums/MemSched.hh"
+#include "mem/dprh_filter.hh"
 #include "mem/qos/mem_ctrl.hh"
 #include "mem/qport.hh"
 #include "params/MemCtrl.hh"
@@ -541,6 +543,10 @@ class MemCtrl : public qos::MemCtrl
     Cycles dprhAGuard;
     unsigned dprhKp;
 
+    /** Option B MSF-like read-queue filter. Constructed iff enableFilter.
+     *  Interface-compatible with the eventual Option A perceptron. */
+    std::unique_ptr<DprhFilter> dprhFilter;
+
     /**
      * Pipeline latency of the controller frontend. The frontend
      * contribution is added to writes (that complete when they are in
@@ -590,6 +596,8 @@ class MemCtrl : public qos::MemCtrl
         statistics::Scalar readBursts;
         statistics::Scalar writeBursts;
         statistics::Scalar servicedByWrQ;
+        // DPRH Option B filter: prefetches dropped at read-queue enqueue.
+        statistics::Scalar filterDroppedPrefetches;
         statistics::Scalar mergedWrBursts;
         statistics::Scalar neitherReadNorWriteReqs;
         // Average queue lengths

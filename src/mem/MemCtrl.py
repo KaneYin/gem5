@@ -98,6 +98,13 @@ class MemCtrl(QoSMemCtrl):
     enable_filter = Param.Bool(False, "Enable MSF-like read-queue filter")
     dprh_a_guard = Param.Cycles(0, "Aged-demand guard threshold (Phase 3 sweep)")
     dprh_kp = Param.Unsigned(4, "Consecutive-prefetch service cap (Phase 3 sweep)")
+    # Option B MSF-like filter params (only used when enable_filter is True).
+    filter_accept_pct = Param.Unsigned(
+        50, "Min running prefetcher accuracy %% to accept a prefetch (Option B)"
+    )
+    filter_epoch = Param.Unsigned(
+        64, "Filter accuracy recompute cadence, in prefetch decisions (Option B)"
+    )
 
     # pipeline latency of the controller and PHY, split into a
     # frontend part and a backend part, with reads and writes serviced
