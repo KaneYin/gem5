@@ -441,6 +441,23 @@ class MemCtrl : public qos::MemCtrl
                                             Tick extra_col_delay,
                                             MemInterface* mem_intr);
 
+    /** Decomposition bins for nonHslotReason (research_plan.md §5). Kept in
+     *  declaration order; subnames registered in regStats(). */
+    enum NonHslotReason {
+        DEMAND_READY = 0,     // a timing-legal demand exists this cycle
+        NO_PREFETCH,          // no accepted prefetch queued
+        PF_NOT_ROWHIT,        // prefetch present but not a ready row hit
+        TURNAROUND_UNSAFE,    // prefetch would force a R/W bus turnaround
+        AGED_DEMAND,          // an aged demand (>= A_guard) blocks harvesting
+        NUM_NON_HSLOT_REASONS
+    };
+
+    /** True iff any timing-legal *demand* (non-prefetch) read command exists in
+     *  `queue` this cycle, using ONLY the existing timing checker
+     *  (packetReady/burstReady). Single private helper so Phase 1 can
+     *  unit-test the predicate. */
+    bool hasLegalDemand(MemPacketQueue& queue, MemInterface* mem_intr);
+
     /**
      * Calculate burst window aligned tick
      *
@@ -598,6 +615,25 @@ class MemCtrl : public qos::MemCtrl
         statistics::Scalar servicedByWrQ;
         // DPRH Option B filter: prefetches dropped at read-queue enqueue.
         statistics::Scalar filterDroppedPrefetches;
+
+        // --- DPRH Phase 1 stats (H_slot inputs + decomposition + latency) ---
+        // (research_plan.md §5). Phase 0 requires only that these exist, are
+        // named, and are nonzero/sane; the precise H_slot predicate is
+        // validated in Phase 1. All computed with the existing timing checker
+        // (packetReady/burstReady) -- never a parallel timing model.
+        statistics::Scalar schedCycles;             // frfcfs decisions observed
+        statistics::Scalar cyclesNoLegalDemand;     // no timing-legal demand cmd
+        statistics::Scalar cyclesHslot;             // H_slot numerator (§5)
+        statistics::Scalar readyRowHitPrefetch;     // >=1 ready row-hit accept pf
+        statistics::Scalar turnaroundUnsafe;        // pf would force R/W switch
+        statistics::Scalar agedDemandBlocked;       // demand aged >= A_guard
+        statistics::Vector  nonHslotReason;         // decomposition bins (§5)
+        statistics::Histogram demandReadLatency;    // enqueue->response, demand
+        statistics::Histogram prefetchReadLatency;  // enqueue->response, prefetch
+        statistics::Scalar demandRowHits;
+        statistics::Scalar prefetchRowHits;
+        statistics::Scalar readWriteTurnarounds;
+
         statistics::Scalar mergedWrBursts;
         statistics::Scalar neitherReadNorWriteReqs;
         // Average queue lengths

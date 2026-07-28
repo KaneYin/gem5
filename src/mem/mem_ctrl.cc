@@ -615,6 +615,33 @@ MemCtrl::chooseNext(MemPacketQueue& queue, Tick extra_col_delay,
                 }
             }
         } else if (memSchedPolicy == enums::frfcfs) {
+            // --- DPRH Phase 1 stats (H_slot inputs; §5) -------------------
+            // Computed with the existing timing checker only. Phase 0 needs
+            // these present and sane; Phase 1 refines the exact predicate.
+            ++stats.schedCycles;
+            if (hasLegalDemand(queue, mem_intr)) {
+                ++stats.nonHslotReason[DEMAND_READY];
+            } else {
+                ++stats.cyclesNoLegalDemand;
+                // Is there any timing-ready accepted prefetch to harvest?
+                bool readyPf = false;
+                for (auto* mp : queue) {
+                    if (mp->pseudoChannel != mem_intr->pseudoChannel)
+                        continue;
+                    if (mp->pkt->req->isPrefetch() &&
+                            packetReady(mp, mem_intr)) {
+                        readyPf = true;
+                        break;
+                    }
+                }
+                if (readyPf) {
+                    ++stats.readyRowHitPrefetch;
+                    ++stats.cyclesHslot;
+                } else {
+                    ++stats.nonHslotReason[NO_PREFETCH];
+                }
+            }
+            // -------------------------------------------------------------
             // DPRH seam: inert unless enableDprh (Phase 2 fills this in).
             if (enableDprh) {
                 auto forced = dprhChooseNext(queue, extra_col_delay, mem_intr);
@@ -671,6 +698,20 @@ MemCtrl::chooseNextFRFCFS(MemPacketQueue& queue, Tick extra_col_delay,
     }
 
     return std::make_pair(selected_pkt_it, col_allowed_at);
+}
+
+bool
+MemCtrl::hasLegalDemand(MemPacketQueue& queue, MemInterface* mem_intr)
+{
+    // Uses ONLY the existing timing checker (packetReady/burstReady); no
+    // parallel timing model (research_plan.md §3/Phase 3 warning).
+    for (auto* mp : queue) {
+        if (mp->pseudoChannel != mem_intr->pseudoChannel)
+            continue;
+        if (!mp->pkt->req->isPrefetch() && packetReady(mp, mem_intr))
+            return true;
+    }
+    return false;
 }
 
 MemPacketQueue::iterator
@@ -890,6 +931,15 @@ MemCtrl::doBurstAccess(MemPacket* mem_pkt, MemInterface* mem_intr)
         stats.requestorReadTotalLat[mem_pkt->requestorId()] +=
             mem_pkt->readyTime - mem_pkt->entryTime;
         stats.requestorReadBytes[mem_pkt->requestorId()] += mem_pkt->size;
+        // DPRH Phase 1: split read latency by demand vs prefetch. Uses the
+        // packet's PREFETCH flag (V1) and existing readyTime/entryTime; no
+        // parallel timing model, no DRAMInterface changes.
+        const Tick lat = mem_pkt->readyTime - mem_pkt->entryTime;
+        if (mem_pkt->pkt->req->isPrefetch()) {
+            stats.prefetchReadLatency.sample(lat);
+        } else {
+            stats.demandReadLatency.sample(lat);
+        }
     } else {
         ++(mem_intr->writesThisTime);
         stats.requestorWriteBytes[mem_pkt->requestorId()] += mem_pkt->size;
@@ -959,6 +1009,11 @@ MemCtrl::processNextReqEvent(MemInterface* mem_intr,
     bool switched_cmd_type = (mem_intr->busState != mem_intr->busStateNext);
     // record stats
     recordTurnaroundStats(mem_intr->busState, mem_intr->busStateNext);
+    if (switched_cmd_type) {
+        // DPRH Phase 1: count read/write bus turnarounds (context for the
+        // TURNAROUND_UNSAFE H_slot decomposition bin).
+        ++stats.readWriteTurnarounds;
+    }
 
     DPRINTF(MemCtrl, "QoS Turnarounds selected state %s %s\n",
             (mem_intr->busState==MemCtrl::READ)?"READ":"WRITE",
@@ -1263,6 +1318,30 @@ MemCtrl::CtrlStats::CtrlStats(MemCtrl &_ctrl)
              "Number of controller read bursts serviced by the write queue"),
     ADD_STAT(filterDroppedPrefetches, statistics::units::Count::get(),
              "DPRH Option B: prefetches dropped by the read-queue filter"),
+    ADD_STAT(schedCycles, statistics::units::Count::get(),
+             "DPRH: FR-FCFS scheduling decisions observed"),
+    ADD_STAT(cyclesNoLegalDemand, statistics::units::Count::get(),
+             "DPRH: decisions with no timing-legal demand command"),
+    ADD_STAT(cyclesHslot, statistics::units::Count::get(),
+             "DPRH: H_slot numerator -- harvestable prefetch slots (see §5)"),
+    ADD_STAT(readyRowHitPrefetch, statistics::units::Count::get(),
+             "DPRH: decisions with >=1 timing-ready row-hit accepted prefetch"),
+    ADD_STAT(turnaroundUnsafe, statistics::units::Count::get(),
+             "DPRH: decisions where a prefetch would force a R/W turnaround"),
+    ADD_STAT(agedDemandBlocked, statistics::units::Count::get(),
+             "DPRH: decisions blocked by an aged demand (>= A_guard)"),
+    ADD_STAT(nonHslotReason, statistics::units::Count::get(),
+             "DPRH: decomposition of non-H_slot decisions (see §5 bins)"),
+    ADD_STAT(demandReadLatency, statistics::units::Tick::get(),
+             "DPRH: demand read latency (entry->response), ticks"),
+    ADD_STAT(prefetchReadLatency, statistics::units::Tick::get(),
+             "DPRH: prefetch read latency (entry->response), ticks"),
+    ADD_STAT(demandRowHits, statistics::units::Count::get(),
+             "DPRH: demand read bursts that hit an open row"),
+    ADD_STAT(prefetchRowHits, statistics::units::Count::get(),
+             "DPRH: prefetch read bursts that hit an open row"),
+    ADD_STAT(readWriteTurnarounds, statistics::units::Count::get(),
+             "DPRH: read/write bus turnarounds observed"),
     ADD_STAT(mergedWrBursts, statistics::units::Count::get(),
              "Number of controller write bursts merged with an existing one"),
 
@@ -1366,6 +1445,22 @@ MemCtrl::CtrlStats::regStats()
     wrPerTurnAround
         .init(ctrl.writeBufferSize)
         .flags(nozero);
+
+    // --- DPRH Phase 1 stats ---
+    nonHslotReason
+        .init(MemCtrl::NUM_NON_HSLOT_REASONS)
+        .flags(nozero);
+    nonHslotReason.subname(MemCtrl::DEMAND_READY, "demand_ready");
+    nonHslotReason.subname(MemCtrl::NO_PREFETCH, "no_prefetch");
+    nonHslotReason.subname(MemCtrl::PF_NOT_ROWHIT, "pf_not_rowhit");
+    nonHslotReason.subname(MemCtrl::TURNAROUND_UNSAFE, "turnaround_unsafe");
+    nonHslotReason.subname(MemCtrl::AGED_DEMAND, "aged_demand");
+    demandReadLatency
+        .init(16)
+        .flags(nozero | nonan);
+    prefetchReadLatency
+        .init(16)
+        .flags(nozero | nonan);
 
     avgRdBWSys.precision(8);
     avgWrBWSys.precision(8);
