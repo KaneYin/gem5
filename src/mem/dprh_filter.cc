@@ -7,14 +7,20 @@ DprhFilter::DprhFilter(uint32_t accuracy_epoch, uint8_t accept_pct)
 
 uint8_t
 DprhFilter::accuracyPct() const
-{ return cachedAccuracy; }
+{
+    return cachedAccuracy;
+}
 
 void
 DprhFilter::noteUseful()
-{ ++used; }
+{
+    ++used;
+}
 void
 DprhFilter::noteEvicted()
-{ ++evicted; }
+{
+    ++evicted;
+}
 
 bool
 DprhFilter::accept()
