@@ -290,6 +290,18 @@ class MemInterface : public AbstractMemory
     virtual bool burstReady(MemPacket* pkt) const = 0;
 
     /**
+     * DPRH (read-only): would servicing @p pkt right now be a row-buffer hit,
+     * i.e. is the packet's row already the open row of its bank? This inspects
+     * existing bank bookkeeping only and performs no timing computation or
+     * state mutation, so it does not touch the DRAM timing-logic invariant.
+     * Interfaces without an open-row concept (e.g. NVM) return false.
+     *
+     * @param pkt Candidate memory packet
+     * @return true iff pkt targets the currently open row of its bank
+     */
+    virtual bool isRowHit(MemPacket* pkt) const { return false; }
+
+    /**
      * Determine the required delay for an access to a different rank
      *
      * @return required rank to rank delay

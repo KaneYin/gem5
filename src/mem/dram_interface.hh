@@ -762,6 +762,24 @@ class DRAMInterface : public MemInterface
     }
 
     /**
+     * DPRH (read-only): is @p pkt a row-buffer hit right now? Reads the same
+     * per-bank open-row state the FR-FCFS ranker already inspects
+     * (chooseNextFRFCFS: `bank.openRow == pkt->row`); const, no timing math,
+     * no mutation.
+     *
+     * @param pkt Candidate DRAM packet
+     * @return true iff pkt's row is the open row of its bank
+     */
+    bool
+    isRowHit(MemPacket* pkt) const override
+    {
+        if (!pkt->isDram())
+            return false;
+        const Bank& bank = ranks[pkt->rank]->banks[pkt->bank];
+        return bank.openRow == pkt->row;
+    }
+
+    /**
      * This function checks if ranks are actively refreshing and
      * therefore busy. The function also checks if ranks are in
      * the self-refresh state, in which case, a self-refresh exit

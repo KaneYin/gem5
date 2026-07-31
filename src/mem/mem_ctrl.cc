@@ -46,6 +46,7 @@
 #include "debug/MemCtrl.hh"
 #include "debug/NVM.hh"
 #include "debug/QOS.hh"
+#include "mem/dprh_hslot.hh"
 #include "mem/dram_interface.hh"
 #include "mem/mem_interface.hh"
 #include "mem/nvm_interface.hh"
@@ -615,30 +616,73 @@ MemCtrl::chooseNext(MemPacketQueue& queue, Tick extra_col_delay,
                 }
             }
         } else if (memSchedPolicy == enums::frfcfs) {
-            // --- DPRH Phase 1 stats (H_slot inputs; §5) -------------------
-            // Computed with the existing timing checker only. Phase 0 needs
-            // these present and sane; Phase 1 refines the exact predicate.
+            // --- DPRH H_slot accounting (§5) ------------------------------
+            // Computed with the existing timing checker (packetReady/burstReady)
+            // and a read-only open-row query only -- never a parallel timing
+            // model. FIX-1 wired in the full predicate (row-hit + turnaround).
             ++stats.schedCycles;
             if (hasLegalDemand(queue, mem_intr)) {
                 ++stats.nonHslotReason[DEMAND_READY];
             } else {
                 ++stats.cyclesNoLegalDemand;
-                // Is there any timing-ready accepted prefetch to harvest?
-                bool readyPf = false;
+                // FIX-1: the TRUE H_slot predicate (research_plan.md §5) needs
+                // three conjuncts on the candidate prefetch -- timing-ready,
+                // row-hit, and turnaround-safe -- not just timing-ready. One
+                // read-only pass summarizes the per-channel read queue; the
+                // verdict is delegated to the pure dprh::classifyHslotCycle so
+                // it is unit-testable. isRowHit only reads existing bank
+                // open-row state (no timing edit).
+                bool anyReadyPrefetch = false;
+                bool anyReadyRowHit = false;
+                bool anyHarvestable = false;
                 for (auto* mp : queue) {
                     if (mp->pseudoChannel != mem_intr->pseudoChannel)
                         continue;
-                    if (mp->pkt->req->isPrefetch() &&
-                            packetReady(mp, mem_intr)) {
-                        readyPf = true;
+                    if (!mp->pkt->req->isPrefetch() ||
+                            !packetReady(mp, mem_intr))
+                        continue;
+                    anyReadyPrefetch = true;
+                    if (!mem_intr->isRowHit(mp))
+                        continue;
+                    anyReadyRowHit = true;
+                    // Turnaround-safe iff issuing mp keeps the current bus
+                    // direction. This path runs only in READ bus state and all
+                    // read-queue prefetches are reads, so it is effectively
+                    // always true here; wired in for definitional correctness
+                    // (see FIX-1 in PHASE_LOG.md).
+                    const bool turnaroundSafe = mp->isRead()
+                        ? (mem_intr->busState == READ)
+                        : (mem_intr->busState == WRITE);
+                    if (turnaroundSafe) {
+                        anyHarvestable = true;
                         break;
                     }
                 }
-                if (readyPf) {
-                    ++stats.readyRowHitPrefetch;
+
+                const dprh::HslotVerdict v = dprh::classifyHslotCycle(
+                        /*anyLegalDemand=*/false, anyReadyPrefetch,
+                        anyReadyRowHit, anyHarvestable);
+                if (v.readyPrefetchProxy)
+                    ++stats.cyclesReadyPrefetchNoDemand;
+                if (v.hslot)
                     ++stats.cyclesHslot;
-                } else {
+                if (v.readyPrefetchProxy && !v.hslot)
+                    ++stats.cyclesHslotUpperGap;
+                switch (v.reason) {
+                  case dprh::HslotReason::NoPrefetch:
                     ++stats.nonHslotReason[NO_PREFETCH];
+                    break;
+                  case dprh::HslotReason::PfNotRowHit:
+                    ++stats.nonHslotReason[PF_NOT_ROWHIT];
+                    break;
+                  case dprh::HslotReason::TurnaroundUnsafe:
+                    ++stats.nonHslotReason[TURNAROUND_UNSAFE];
+                    ++stats.turnaroundUnsafe;
+                    break;
+                  case dprh::HslotReason::Harvestable:
+                  case dprh::HslotReason::DemandReady:
+                    break;  // Harvestable counted via cyclesHslot; DemandReady
+                            // handled in the outer branch.
                 }
             }
             // -------------------------------------------------------------
@@ -1323,9 +1367,13 @@ MemCtrl::CtrlStats::CtrlStats(MemCtrl &_ctrl)
     ADD_STAT(cyclesNoLegalDemand, statistics::units::Count::get(),
              "DPRH: decisions with no timing-legal demand command"),
     ADD_STAT(cyclesHslot, statistics::units::Count::get(),
-             "DPRH: H_slot numerator -- harvestable prefetch slots (see §5)"),
-    ADD_STAT(readyRowHitPrefetch, statistics::units::Count::get(),
-             "DPRH: decisions with >=1 timing-ready row-hit accepted prefetch"),
+             "DPRH: TRUE H_slot numerator -- no legal demand + ready row-hit "
+             "turnaround-safe prefetch (see §5)"),
+    ADD_STAT(cyclesReadyPrefetchNoDemand, statistics::units::Count::get(),
+             "DPRH: proxy/upper-bound H_slot -- no legal demand + >=1 timing-"
+             "ready accepted prefetch (ignores row-hit/turnaround)"),
+    ADD_STAT(cyclesHslotUpperGap, statistics::units::Count::get(),
+             "DPRH: cyclesReadyPrefetchNoDemand - cyclesHslot (proxy looseness)"),
     ADD_STAT(turnaroundUnsafe, statistics::units::Count::get(),
              "DPRH: decisions where a prefetch would force a R/W turnaround"),
     ADD_STAT(agedDemandBlocked, statistics::units::Count::get(),

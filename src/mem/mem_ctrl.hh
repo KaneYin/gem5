@@ -623,8 +623,16 @@ class MemCtrl : public qos::MemCtrl
         // (packetReady/burstReady) -- never a parallel timing model.
         statistics::Scalar schedCycles;             // frfcfs decisions observed
         statistics::Scalar cyclesNoLegalDemand;     // no timing-legal demand cmd
-        statistics::Scalar cyclesHslot;             // H_slot numerator (§5)
-        statistics::Scalar readyRowHitPrefetch;     // >=1 ready row-hit accept pf
+        statistics::Scalar cyclesHslot;             // TRUE H_slot numerator (§5):
+                                                    // no legal demand + ready,
+                                                    // row-hit, turnaround-safe pf
+        // FIX-1: proxy/upper bound on H_slot -- no legal demand + >=1 timing-
+        // ready accepted prefetch, ignoring row-hit/turnaround. Decomposition
+        // term; was the (misnamed) counter formerly incremented as cyclesHslot.
+        statistics::Scalar cyclesReadyPrefetchNoDemand;
+        // FIX-1: cyclesReadyPrefetchNoDemand - cyclesHslot; how loose the proxy
+        // was (row-conflict or turnaround-unsafe ready prefetches).
+        statistics::Scalar cyclesHslotUpperGap;
         statistics::Scalar turnaroundUnsafe;        // pf would force R/W switch
         statistics::Scalar agedDemandBlocked;       // demand aged >= A_guard
         statistics::Vector  nonHslotReason;         // decomposition bins (§5)
