@@ -46,6 +46,7 @@
 #include "debug/MemCtrl.hh"
 #include "debug/NVM.hh"
 #include "debug/QOS.hh"
+#include "mem/dprh_demand_first.hh"
 #include "mem/dprh_hslot.hh"
 #include "mem/dram_interface.hh"
 #include "mem/mem_interface.hh"
@@ -701,24 +702,41 @@ MemCtrl::chooseNext(MemPacketQueue& queue, Tick extra_col_delay,
                 if (forced != queue.end()) { ret = forced; return ret; }
             }
             if (demandFirst) {
-                // B2 baseline: prefer FR-FCFS restricted to demand reads when
-                // any demand is timing-legal; else fall through to full
-                // FR-FCFS (work-conserving). chooseNextFRFCFS is const and does
-                // not mutate the queue, so running it on a filtered sub-queue
-                // is safe (verified in DRAMInterface::chooseNextFRFCFS).
-                MemPacketQueue demandsOnly;
+                // B2 baseline: PER-BANK demand-first (PADC), not global. A
+                // prefetch is eligible only if its bank has no queued demand;
+                // the eligible sub-queue (all demands + prefetches to demand-
+                // free banks) then arbitrates by ordinary FR-FCFS (row-hit-
+                // first), so a row-hit prefetch to an idle bank can beat a
+                // row-miss demand in another bank. Global demand-first (any
+                // ready demand suppresses all prefetches) would make B2
+                // artificially strong -- see FIX-2 in PHASE_LOG.md. If nothing
+                // eligible is timing-ready, fall through to full FR-FCFS
+                // (work-conserving). chooseNextFRFCFS is const and does not
+                // mutate the queue, so a filtered sub-queue is safe.
+                std::set<uint32_t> demandBanks;
                 for (auto* mp : queue)
-                    if (!mp->pkt->req->isPrefetch()) demandsOnly.push_back(mp);
-                if (!demandsOnly.empty()) {
+                    if (!mp->pkt->req->isPrefetch())
+                        demandBanks.insert(dprh::bankKey(mp->pseudoChannel,
+                                                    mp->rank, mp->bank));
+                MemPacketQueue eligible;
+                for (auto* mp : queue) {
+                    const bool bankHasDemand = demandBanks.count(
+                            dprh::bankKey(mp->pseudoChannel, mp->rank,
+                                          mp->bank)) != 0;
+                    if (dprh::demandFirstEligible(mp->pkt->req->isPrefetch(),
+                                                  bankHasDemand))
+                        eligible.push_back(mp);
+                }
+                if (!eligible.empty()) {
                     Tick c;
-                    MemPacketQueue::iterator dsel;
-                    std::tie(dsel, c) = chooseNextFRFCFS(demandsOnly,
+                    MemPacketQueue::iterator sel;
+                    std::tie(sel, c) = chooseNextFRFCFS(eligible,
                                                 extra_col_delay, mem_intr);
-                    if (dsel != demandsOnly.end()) {
+                    if (sel != eligible.end()) {
                         // Map the selected packet back to the real queue
                         // iterator (MemPacket* identity is unique).
                         for (auto it = queue.begin(); it != queue.end(); ++it)
-                            if (*it == *dsel) { return it; }
+                            if (*it == *sel) { return it; }
                     }
                 }
             }
