@@ -103,9 +103,9 @@ def make_mem_ctrl(config):
     # touched (hard invariant).
     ctrl.dram.addr_mapping = FROZEN["addr_mapping"]
     ctrl.dram.page_policy = FROZEN["page_policy"]
-    ctrl.mem_sched_policy = "frfcfs"
-    ctrl.read_buffer_size = 64
-    ctrl.write_buffer_size = 64
+    ctrl.mem_sched_policy = FROZEN["mem_sched_policy"]
+    ctrl.read_buffer_size = FROZEN["read_buffer_size"]
+    ctrl.write_buffer_size = FROZEN["write_buffer_size"]
     # Scheduler-layer flags (params added in Tasks 6-8). Default-off keeps an
     # unflagged build == stock gem5; here we set them per config profile.
     ctrl.enable_filter = config in ("B1", "B2", "DPRH")
@@ -114,9 +114,32 @@ def make_mem_ctrl(config):
     return ctrl
 
 
+# FIX-6: single source of truth for the H_slot-relevant frozen system params.
+# Row-hit availability -- hence H_slot itself -- depends on page policy, address
+# mapping, and read-queue depth, so these are frozen and self-documented by every
+# run (see frozen_summary()). Mirrored as a table in results/PHASE_LOG.md.
 FROZEN = dict(
     addr_mapping="RoRaBaCoCh",
     page_policy="open_adaptive",
     dram="DDR4_2400_16x4",
     clk="4GHz",
+    mem_sched_policy="frfcfs",
+    read_buffer_size=64,
+    write_buffer_size=64,
+    channels=1,                 # one MemCtrl/DRAM interface in SE + tgen configs
+    ranks_per_channel=2,        # DDR4_2400_16x4 default
+    banks_per_rank=16,          # DDR4_2400_16x4 default
+    prefetcher_primary="SignaturePathPrefetcher (SPP)",       # D-A0
+    prefetcher_sensitivity="StridePrefetcher",                # D-A0 (was SPP)
 )
+
+
+def frozen_summary():
+    """One-line, greppable dump of the frozen params so every simout
+    self-documents its config (FIX-6). A results-aggregation step can refuse to
+    merge runs whose '[dprh-frozen]' line disagrees."""
+    keys = ("dram", "addr_mapping", "page_policy", "mem_sched_policy",
+            "read_buffer_size", "write_buffer_size", "channels",
+            "ranks_per_channel", "banks_per_rank", "clk",
+            "prefetcher_primary", "prefetcher_sensitivity")
+    return "[dprh-frozen] " + " ".join(f"{k}={FROZEN[k]}" for k in keys)

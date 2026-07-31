@@ -60,6 +60,9 @@ args = p.parse_args()
 # B0 forces the prefetcher off regardless of --prefetcher (requirement e).
 pf_kind = "none" if args.config == "B0" else args.prefetcher
 
+# FIX-6: self-document the frozen config into every simout.
+print(C.frozen_summary())
+
 # ---------------------------------------------------------------------------
 # System + clock + memory range
 # ---------------------------------------------------------------------------

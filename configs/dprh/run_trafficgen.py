@@ -42,6 +42,9 @@ p.add_argument("--rd-perc", type=int, default=100,
                help="percent reads for both generators (default 100)")
 args = p.parse_args()
 
+# FIX-6: self-document the frozen config into every simout.
+print(C.frozen_summary())
+
 # ---------------------------------------------------------------------------
 # System + memory controller (frozen definition).
 # ---------------------------------------------------------------------------
