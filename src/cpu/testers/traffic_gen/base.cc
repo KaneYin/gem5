@@ -420,6 +420,9 @@ BaseTrafficGen::createDram(Tick duration,
                            unsigned int nbr_of_ranks,
                            bool tag_prefetch)
 {
+    // DPRH FIX-5: record what actually bound to the tag_prefetch slot so Python
+    // can assert the positional argument landed correctly.
+    lastDramTagPrefetch = tag_prefetch;
     return std::shared_ptr<BaseGen>(new DramGen(*this, requestorId,
                                                 duration, start_addr,
                                                 end_addr, blocksize,

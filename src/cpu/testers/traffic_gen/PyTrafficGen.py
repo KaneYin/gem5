@@ -58,6 +58,8 @@ class PyTrafficGen(BaseTrafficGen):
         PyBindMethod("createLinear"),
         PyBindMethod("createRandom"),
         PyBindMethod("createDram"),
+        # DPRH FIX-5: read back the tag_prefetch bound by the last createDram().
+        PyBindMethod("getLastDramTagPrefetch"),
         PyBindMethod("createDramRot"),
         PyBindMethod("createHybrid"),
         PyBindMethod("createNvm"),

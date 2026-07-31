@@ -285,6 +285,16 @@ class BaseTrafficGen : public ClockedObject
         // the DRAM prefetch stream is visible as prefetch at the MemCtrl.
         bool tag_prefetch = false);
 
+    /**
+     * DPRH FIX-5: the tag_prefetch value bound by the most recent createDram()
+     * call. createDram takes tag_prefetch as its positional 15th argument
+     * because PyBind does not surface C++ default args; this read-only getter
+     * lets run_trafficgen.py assert the value landed in the intended slot, so a
+     * silent slot shift on a gem5 upgrade (upstream inserting a parameter)
+     * cannot corrupt experiments unnoticed.
+     */
+    bool getLastDramTagPrefetch() const { return lastDramTagPrefetch; }
+
     std::shared_ptr<BaseGen> createDramRot(
         Tick duration,
         Addr start_addr, Addr end_addr, Addr blocksize,
@@ -341,6 +351,10 @@ class BaseTrafficGen : public ClockedObject
      * RequestorID used in generated requests.
      */
     const RequestorID requestorId;
+
+    /** DPRH FIX-5: tag_prefetch bound by the most recent createDram() call
+     *  (read back via getLastDramTagPrefetch to verify the positional slot). */
+    bool lastDramTagPrefetch = false;
 
     /** Currently active generator */
     std::shared_ptr<BaseGen> activeGenerator;

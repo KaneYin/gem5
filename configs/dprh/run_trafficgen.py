@@ -101,7 +101,7 @@ m5.instantiate()
 def demand_trace():
     # Untagged demand reads at the requested injection period. num_seq_pkts=1
     # keeps demands from being artificially row-local.
-    yield system.demand_gen.createDram(
+    gen = system.demand_gen.createDram(
         args.period,          # duration
         0,                    # start_addr
         max_addr,             # end_addr
@@ -116,15 +116,21 @@ def demand_trace():
         nbr_banks,            # nbr_of_banks_util
         addr_map_enum,        # addr_mapping
         mem_ranks,            # nbr_of_ranks
-        False,                # tag_prefetch (demands are NOT tagged)
+        False,                # tag_prefetch: POSITIONAL ARG -- verify slot on
+                              # any gem5 upgrade (see FIX-5)
     )
+    # FIX-5: read back the tag the generator actually bound; catches a silent
+    # positional-slot shift (e.g. upstream inserting a createDram parameter).
+    assert system.demand_gen.getLastDramTagPrefetch() == False, (
+        "FIX-5: createDram tag_prefetch bound to the wrong slot (demand gen)")
+    yield gen
     yield system.demand_gen.createExit(0)
 
 
 def pf_trace():
     # Prefetch reads; num_seq_pkts controls row-locality density (R6). Tagged
     # with Request::PREFETCH when --pf-tag is set.
-    yield system.pf_gen.createDram(
+    gen = system.pf_gen.createDram(
         args.period,          # duration
         0,                    # start_addr
         max_addr,             # end_addr
@@ -139,8 +145,14 @@ def pf_trace():
         nbr_banks,            # nbr_of_banks_util
         addr_map_enum,        # addr_mapping
         mem_ranks,            # nbr_of_ranks
-        bool(args.pf_tag),    # tag_prefetch (R6 prefetch tagging)
+        bool(args.pf_tag),    # tag_prefetch: POSITIONAL ARG -- verify slot on
+                              # any gem5 upgrade (see FIX-5)
     )
+    # FIX-5: read back the tag the generator actually bound; catches a silent
+    # positional-slot shift (e.g. upstream inserting a createDram parameter).
+    assert system.pf_gen.getLastDramTagPrefetch() == bool(args.pf_tag), (
+        "FIX-5: createDram tag_prefetch bound to the wrong slot (prefetch gen)")
+    yield gen
     yield system.pf_gen.createExit(0)
 
 
