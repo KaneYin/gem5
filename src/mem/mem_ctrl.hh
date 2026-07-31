@@ -615,6 +615,9 @@ class MemCtrl : public qos::MemCtrl
         statistics::Scalar servicedByWrQ;
         // DPRH Option B filter: prefetches dropped at read-queue enqueue.
         statistics::Scalar filterDroppedPrefetches;
+        // FIX-3 (V1): prefetch-flagged packets reaching the MC read queue.
+        // The V1 go/no-go signal -- must be > 0, else the PREFETCH flag is lost.
+        statistics::Scalar prefetchEnqueued;
 
         // --- DPRH Phase 1 stats (H_slot inputs + decomposition + latency) ---
         // (research_plan.md §5). Phase 0 requires only that these exist, are

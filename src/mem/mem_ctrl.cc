@@ -208,6 +208,15 @@ MemCtrl::addToReadQueue(PacketPtr pkt,
 
     assert(pkt_count != 0);
 
+    // FIX-3 (V1 probe): count prefetch-flagged packets that reach the MC read
+    // queue. If this stays 0, the PREFETCH flag was lost en route and every
+    // prefetch-classified stat + the Option B filter are dead code -- so it is
+    // the first gate after build (see CLUSTER_HANDOFF.md). Counted before the
+    // filter so it is independent of filter config (which defaults off).
+    if (pkt->req->isPrefetch()) {
+        ++stats.prefetchEnqueued;
+    }
+
     // MSF-like filter (Option B). Demand-upgrade invariant: only prefetch
     // packets are candidates for dropping; a demand to the same addr is never
     // filtered here, and an in-flight prefetch matched by a later demand is
@@ -1362,6 +1371,8 @@ MemCtrl::CtrlStats::CtrlStats(MemCtrl &_ctrl)
              "Number of controller read bursts serviced by the write queue"),
     ADD_STAT(filterDroppedPrefetches, statistics::units::Count::get(),
              "DPRH Option B: prefetches dropped by the read-queue filter"),
+    ADD_STAT(prefetchEnqueued, statistics::units::Count::get(),
+             "DPRH V1: prefetch-flagged packets reaching the MC read queue"),
     ADD_STAT(schedCycles, statistics::units::Count::get(),
              "DPRH: FR-FCFS scheduling decisions observed"),
     ADD_STAT(cyclesNoLegalDemand, statistics::units::Count::get(),
