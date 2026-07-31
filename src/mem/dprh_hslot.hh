@@ -19,18 +19,19 @@ namespace dprh
 /** Why a scheduling cycle did (or did not) count as an H_slot. */
 enum class HslotReason
 {
-    Harvestable,       // true H_slot: a ready, row-hit, turnaround-safe pf exists
-    DemandReady,       // a timing-legal demand blocks harvesting
-    NoPrefetch,        // no timing-ready accepted prefetch queued
-    PfNotRowHit,       // ready prefetch(es) present, but none is a row hit
-    TurnaroundUnsafe   // ready row-hit prefetch(es), but none is turnaround-safe
+    Harvestable, // true H_slot: a ready, row-hit, turnaround-safe pf exists
+    DemandReady, // a timing-legal demand blocks harvesting
+    NoPrefetch,  // no timing-ready accepted prefetch queued
+    PfNotRowHit, // ready prefetch(es) present, but none is a row hit
+    TurnaroundUnsafe // ready row-hit prefetch(es), but none is turnaround-safe
 };
 
 /** Per-cycle H_slot accounting verdict. */
 struct HslotVerdict
 {
     bool hslot;              // increment cyclesHslot (the TRUE predicate)
-    bool readyPrefetchProxy; // increment cyclesReadyPrefetchNoDemand (upper bound)
+    bool readyPrefetchProxy; // increment cyclesReadyPrefetchNoDemand (upper
+                             // bound)
     HslotReason reason;      // decomposition bin
 };
 
@@ -41,30 +42,34 @@ struct HslotVerdict
  *   @param anyLegalDemand   a timing-legal demand read exists
  *   @param anyReadyPrefetch a timing-ready accepted prefetch exists (the proxy
  *                           upper bound on H_slot)
- *   @param anyReadyRowHit   a timing-ready accepted prefetch that is ALSO a row
- *                           hit exists
+ *   @param anyReadyRowHit   a timing-ready accepted prefetch that is ALSO a
+ * row hit exists
  *   @param anyHarvestable   a timing-ready, row-hit prefetch that is ALSO
  *                           turnaround-safe exists (the TRUE H_slot condition)
  *
  * The caller must supply monotone inputs:
  *   anyHarvestable ==> anyReadyRowHit ==> anyReadyPrefetch.
- * The proxy (readyPrefetchProxy) is the upper bound H_slot used to admit before
- * FIX-1; the gap proxy - true measures how loose that upper bound was.
+ * The proxy (readyPrefetchProxy) is the upper bound H_slot used to admit
+ * before FIX-1; the gap proxy - true measures how loose that upper bound was.
  */
 inline HslotVerdict
 classifyHslotCycle(bool anyLegalDemand, bool anyReadyPrefetch,
                    bool anyReadyRowHit, bool anyHarvestable)
 {
-    if (anyLegalDemand)
+    if (anyLegalDemand) {
         return {false, false, HslotReason::DemandReady};
+    }
 
     const bool proxy = anyReadyPrefetch;
-    if (anyHarvestable)
+    if (anyHarvestable) {
         return {true, proxy, HslotReason::Harvestable};
-    if (!anyReadyPrefetch)
+    }
+    if (!anyReadyPrefetch) {
         return {false, proxy, HslotReason::NoPrefetch};
-    if (!anyReadyRowHit)
+    }
+    if (!anyReadyRowHit) {
         return {false, proxy, HslotReason::PfNotRowHit};
+    }
     return {false, proxy, HslotReason::TurnaroundUnsafe};
 }
 

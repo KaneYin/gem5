@@ -33,9 +33,9 @@ TEST(DprhHslot, RowHitTurnaroundSafeCountsHslot)
     EXPECT_EQ(v.reason, HslotReason::Harvestable);
 }
 
-// FIX-1 acceptance case (c): a timing-ready row-hit prefetch that would require
-// a bus turnaround. cyclesHslot must NOT increment; proxy does. Reason:
-// TurnaroundUnsafe.
+// FIX-1 acceptance case (c): a timing-ready row-hit prefetch that would
+// require a bus turnaround. cyclesHslot must NOT increment; proxy does.
+// Reason: TurnaroundUnsafe.
 TEST(DprhHslot, RowHitButTurnaroundUnsafeIsProxyOnly)
 {
     auto v = classifyHslotCycle(/*anyLegalDemand=*/false,
@@ -77,5 +77,6 @@ TEST(DprhHslot, HarvestableImpliesProxy)
 {
     auto v = classifyHslotCycle(false, true, true, true);
     EXPECT_TRUE(v.hslot);
-    EXPECT_TRUE(v.readyPrefetchProxy);  // gap increment (proxy && !hslot) == false
+    EXPECT_TRUE(
+        v.readyPrefetchProxy); // gap increment (proxy && !hslot) == false
 }
