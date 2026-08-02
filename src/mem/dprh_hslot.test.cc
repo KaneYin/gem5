@@ -80,3 +80,15 @@ TEST(DprhHslot, HarvestableImpliesProxy)
     EXPECT_TRUE(
         v.readyPrefetchProxy); // gap increment (proxy && !hslot) == false
 }
+
+// Phase 1: a true H_slot cycle is "aged-demand blocked" iff a queued demand has
+// aged past A_guard -- DPRH's Phase-2 aged-demand guard would suppress the
+// harvest even though no demand is timing-ready this cycle.
+TEST(DprhHslot, AgedBlockedOnlyWhenHslotAndAgedDemand)
+{
+    using dprh::hslotAgedBlocked;
+    EXPECT_TRUE(hslotAgedBlocked(/*hslot=*/true, /*anyAgedDemand=*/true));
+    EXPECT_FALSE(hslotAgedBlocked(/*hslot=*/true, /*anyAgedDemand=*/false));
+    EXPECT_FALSE(hslotAgedBlocked(/*hslot=*/false, /*anyAgedDemand=*/true));
+    EXPECT_FALSE(hslotAgedBlocked(/*hslot=*/false, /*anyAgedDemand=*/false));
+}

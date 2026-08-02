@@ -73,6 +73,20 @@ classifyHslotCycle(bool anyLegalDemand, bool anyReadyPrefetch,
     return {false, proxy, HslotReason::TurnaroundUnsafe};
 }
 
+/**
+ * Phase 1 refinement (research_plan.md §5, AGED_DEMAND bin). A cycle that is a
+ * true H_slot (harvestable) is *aged-demand blocked* iff some queued demand has
+ * aged past A_guard. This is the load-bearing input to the Phase-3 A_guard
+ * sweep: it counts H_slot cycles DPRH's aged-demand guard would decline to
+ * harvest. It never changes cyclesHslot (the raw predicate); it is reported
+ * alongside it.
+ */
+inline bool
+hslotAgedBlocked(bool hslot, bool anyAgedDemand)
+{
+    return hslot && anyAgedDemand;
+}
+
 } // namespace dprh
 } // namespace gem5
 
