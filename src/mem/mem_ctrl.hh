@@ -618,6 +618,10 @@ class MemCtrl : public qos::MemCtrl
         // FIX-3 (V1): prefetch-flagged packets reaching the MC read queue.
         // The V1 go/no-go signal -- must be > 0, else the PREFETCH flag is lost.
         statistics::Scalar prefetchEnqueued;
+        // DPRH Phase 1: late-prefetch rate. A demand is "late" when a prefetch
+        // to its block is still queued at the MC when the demand arrives.
+        statistics::Scalar demandReadsSeen;      // late-prefetch denominator
+        statistics::Scalar latePrefetchDemands;  // demands covered by a queued pf
 
         // --- DPRH Phase 1 stats (H_slot inputs + decomposition + latency) ---
         // (research_plan.md §5). Phase 0 requires only that these exist, are

@@ -48,6 +48,7 @@
 #include "debug/QOS.hh"
 #include "mem/dprh_demand_first.hh"
 #include "mem/dprh_hslot.hh"
+#include "mem/dprh_late.hh"
 #include "mem/dram_interface.hh"
 #include "mem/mem_interface.hh"
 #include "mem/nvm_interface.hh"
@@ -216,6 +217,25 @@ MemCtrl::addToReadQueue(PacketPtr pkt,
     // filter so it is independent of filter config (which defaults off).
     if (pkt->req->isPrefetch()) {
         ++stats.prefetchEnqueued;
+    }
+    // DPRH Phase 1: late-prefetch rate. On a DEMAND arrival, scan the read
+    // queue for an accepted PREFETCH to the same block that is still queued
+    // (not yet serviced) -- the timeliness headroom DPRH targets. Read-only;
+    // reuses burstAlign; the match logic is the unit-tested dprh predicate.
+    if (!pkt->req->isPrefetch()) {
+        ++stats.demandReadsSeen;
+        const uint64_t burst = mem_intr->bytesPerBurst();
+        assert(burst && (burst & (burst - 1)) == 0);  // power-of-2 precondition
+        std::vector<dprh::QueuedRead> queued;
+        for (const auto& vec : readQueue) {
+            for (auto* mp : vec) {
+                queued.push_back({mp->addr, mp->pkt->req->isPrefetch()});
+            }
+        }
+        if (dprh::demandHasQueuedPrefetch(
+                queued, burstAlign(pkt->getAddr(), mem_intr), burst)) {
+            ++stats.latePrefetchDemands;
+        }
     }
 
     // MSF-like filter (Option B). Demand-upgrade invariant: only prefetch
@@ -1391,6 +1411,11 @@ MemCtrl::CtrlStats::CtrlStats(MemCtrl &_ctrl)
              "DPRH Option B: prefetches dropped by the read-queue filter"),
     ADD_STAT(prefetchEnqueued, statistics::units::Count::get(),
              "DPRH V1: prefetch-flagged packets reaching the MC read queue"),
+    ADD_STAT(demandReadsSeen, statistics::units::Count::get(),
+             "DPRH Phase 1: demand reads observed at the MC read queue"),
+    ADD_STAT(latePrefetchDemands, statistics::units::Count::get(),
+             "DPRH Phase 1: demands arriving while a prefetch to their block is "
+             "still queued (late prefetches)"),
     ADD_STAT(schedCycles, statistics::units::Count::get(),
              "DPRH: FR-FCFS scheduling decisions observed"),
     ADD_STAT(cyclesNoLegalDemand, statistics::units::Count::get(),
