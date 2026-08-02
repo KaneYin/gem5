@@ -1222,6 +1222,18 @@ MemCtrl::processNextReqEvent(MemInterface* mem_intr,
 
             auto mem_pkt = *to_read;
 
+            // DPRH Phase 1: demand vs prefetch row-hit split. Sample the open-
+            // row state BEFORE doBurstAccess issues the command (which may open
+            // a new row). isRowHit is the existing read-only accessor (FIX-1);
+            // no timing logic, no DRAMInterface edit.
+            if (mem_intr->isRowHit(mem_pkt)) {
+                if (mem_pkt->pkt->req->isPrefetch()) {
+                    ++stats.prefetchRowHits;
+                } else {
+                    ++stats.demandRowHits;
+                }
+            }
+
             Tick cmd_at = doBurstAccess(mem_pkt, mem_intr);
 
             DPRINTF(MemCtrl,
