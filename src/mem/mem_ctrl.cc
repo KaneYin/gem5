@@ -219,21 +219,28 @@ MemCtrl::addToReadQueue(PacketPtr pkt,
         ++stats.prefetchEnqueued;
     }
     // DPRH Phase 1: late-prefetch rate. On a DEMAND arrival, scan the read
-    // queue for an accepted PREFETCH to the same block that is still queued
-    // (not yet serviced) -- the timeliness headroom DPRH targets. Read-only;
-    // reuses burstAlign; the match logic is the unit-tested dprh predicate.
+    // queue for an accepted PREFETCH to the same block still queued (not yet
+    // serviced) -- the timeliness headroom DPRH targets. Read-only, early-exit,
+    // no allocation; the block-match is the unit-tested dprh::blocksMatch. The
+    // scan runs BEFORE this packet is enqueued (that happens ~100 lines below),
+    // so an arriving demand never self-matches. Mirrors the in-place per-item
+    // predicate use in the demand-first block.
     if (!pkt->req->isPrefetch()) {
         ++stats.demandReadsSeen;
+        const Addr demandBurst = burstAlign(pkt->getAddr(), mem_intr);
         const uint64_t burst = mem_intr->bytesPerBurst();
-        assert(burst && (burst & (burst - 1)) == 0);  // power-of-2 precondition
-        std::vector<dprh::QueuedRead> queued;
+        bool late = false;
         for (const auto& vec : readQueue) {
             for (auto* mp : vec) {
-                queued.push_back({mp->addr, mp->pkt->req->isPrefetch()});
+                if (mp->pkt->req->isPrefetch() &&
+                        dprh::blocksMatch(mp->addr, demandBurst, burst)) {
+                    late = true;
+                    break;
+                }
             }
+            if (late) break;
         }
-        if (dprh::demandHasQueuedPrefetch(
-                queued, burstAlign(pkt->getAddr(), mem_intr), burst)) {
+        if (late) {
             ++stats.latePrefetchDemands;
         }
     }
