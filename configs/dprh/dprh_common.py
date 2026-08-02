@@ -84,7 +84,7 @@ def make_prefetcher(kind):
     raise ValueError(kind)
 
 
-def make_mem_ctrl(config):
+def make_mem_ctrl(config, a_guard=None):
     """config in {B0,B1,B2,DPRH}: only the scheduler-layer flags differ.
 
     The three scheduler-layer flags (enable_filter, demand_first, enable_dprh)
@@ -111,6 +111,10 @@ def make_mem_ctrl(config):
     ctrl.enable_filter = config in ("B1", "B2", "DPRH")
     ctrl.demand_first = config == "B2"
     ctrl.enable_dprh = config == "DPRH"
+    if a_guard is not None:
+        # Phase-3 sweep knob (NOT in FROZEN); Phase 1 sets it only to size the
+        # AGED_DEMAND H_slot bin. Cycles param -> pass an int cycle count.
+        ctrl.dprh_a_guard = int(a_guard)
     return ctrl
 
 

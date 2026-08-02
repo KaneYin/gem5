@@ -55,6 +55,8 @@ p.add_argument(
     default=1_000_000_000,
     help="fixed skip-init offset (insts fast-forwarded on Atomic)",
 )
+p.add_argument("--a-guard", type=int, default=0,
+               help="aged-demand guard in cycles (sizes the AGED_DEMAND bin)")
 args = p.parse_args()
 
 # B0 forces the prefetcher off regardless of --prefetcher (requirement e).
@@ -129,7 +131,7 @@ system.llc.cpu_side = system.membus.mem_side_ports
 system.llc.mem_side = system.tollcbus.cpu_side_ports
 
 # Memory controller from the frozen definition (requirement c).
-system.mem_ctrl = C.make_mem_ctrl(args.config)
+system.mem_ctrl = C.make_mem_ctrl(args.config, a_guard=args.a_guard)
 system.mem_ctrl.port = system.tollcbus.mem_side_ports
 
 # ---------------------------------------------------------------------------

@@ -40,6 +40,8 @@ p.add_argument("--period", type=int, default=100_000_000,
                help="total run period in ticks")
 p.add_argument("--rd-perc", type=int, default=100,
                help="percent reads for both generators (default 100)")
+p.add_argument("--a-guard", type=int, default=0,
+               help="aged-demand guard in cycles (sizes the AGED_DEMAND bin)")
 args = p.parse_args()
 
 # FIX-6: self-document the frozen config into every simout.
@@ -55,7 +57,7 @@ system.clk_domain = SrcClockDomain(
 system.mem_ranges = [AddrRange("2GB")]
 system.membus = SystemXBar()
 
-system.mem_ctrl = C.make_mem_ctrl(args.config)
+system.mem_ctrl = C.make_mem_ctrl(args.config, a_guard=args.a_guard)
 system.mem_ctrl.port = system.membus.mem_side_ports
 
 # ---------------------------------------------------------------------------
