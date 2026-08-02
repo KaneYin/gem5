@@ -459,6 +459,14 @@ class MemCtrl : public qos::MemCtrl
     bool hasLegalDemand(MemPacketQueue& queue, MemInterface* mem_intr);
 
     /**
+     * DPRH Phase 1: does the read queue hold a demand that has aged past
+     * A_guard (dprhAGuard cycles)? Read-only; uses entryTime + the controller
+     * clock, no parallel timing model. Used only for the AGED_DEMAND H_slot
+     * decomposition bin, never to gate issue in Phase 1.
+     */
+    bool hasAgedDemand(MemPacketQueue& queue, MemInterface* mem_intr);
+
+    /**
      * Calculate burst window aligned tick
      *
      * @param cmd_tick Initial tick of command

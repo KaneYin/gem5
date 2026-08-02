@@ -717,9 +717,18 @@ MemCtrl::chooseNext(MemPacketQueue& queue, Tick extra_col_delay,
                     ++stats.turnaroundUnsafe;
                     break;
                   case dprh::HslotReason::Harvestable:
+                    // Phase 1 refinement: a true H_slot cycle that also has an
+                    // aged (>= A_guard) queued demand is what DPRH's Phase-2
+                    // aged-demand guard would decline to harvest. Report it in
+                    // the AGED_DEMAND bin; cyclesHslot (raw) is unchanged.
+                    if (dprh::hslotAgedBlocked(
+                            v.hslot, hasAgedDemand(queue, mem_intr))) {
+                        ++stats.agedDemandBlocked;
+                        ++stats.nonHslotReason[AGED_DEMAND];
+                    }
+                    break;
                   case dprh::HslotReason::DemandReady:
-                    break;  // Harvestable counted via cyclesHslot; DemandReady
-                            // handled in the outer branch.
+                    break;  // handled in the outer branch.
                 }
             }
             // -------------------------------------------------------------
@@ -808,6 +817,24 @@ MemCtrl::hasLegalDemand(MemPacketQueue& queue, MemInterface* mem_intr)
             continue;
         if (!mp->pkt->req->isPrefetch() && packetReady(mp, mem_intr))
             return true;
+    }
+    return false;
+}
+
+bool
+MemCtrl::hasAgedDemand(MemPacketQueue& queue, MemInterface* mem_intr)
+{
+    // Read-only: a demand's age is curTick() - entryTime; A_guard is the
+    // dprhAGuard cycle count converted to ticks via the controller clock. No
+    // timing-model duplication (research_plan.md §3 warning).
+    const Tick guard = cyclesToTicks(dprhAGuard);
+    for (auto* mp : queue) {
+        if (mp->pseudoChannel != mem_intr->pseudoChannel)
+            continue;
+        if (!mp->pkt->req->isPrefetch() &&
+                (curTick() - mp->entryTime) >= guard) {
+            return true;
+        }
     }
     return false;
 }
