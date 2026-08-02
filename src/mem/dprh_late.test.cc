@@ -40,3 +40,10 @@ TEST(DprhLate, DemandNotLateForDifferentBlock)
     std::vector<QueuedRead> q = {{0x2000, /*isPrefetch=*/true}};
     EXPECT_FALSE(demandHasQueuedPrefetch(q, /*demandAddr=*/0x4000, 64));
 }
+
+// Empty queue: no queued prefetch, so no demand is late.
+TEST(DprhLate, EmptyQueueNeverLate)
+{
+    std::vector<QueuedRead> q;
+    EXPECT_FALSE(demandHasQueuedPrefetch(q, /*demandAddr=*/0x1000, 64));
+}

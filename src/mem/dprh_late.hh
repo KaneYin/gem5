@@ -19,7 +19,12 @@ namespace gem5
 namespace dprh
 {
 
-/** True iff @p a and @p b fall in the same burst-aligned block. */
+/**
+ * True iff @p a and @p b fall in the same burst-aligned block.
+ * @pre burstSize is a non-zero power of two (DDR4 guarantees this via
+ * bytesPerBurst()); the mask idiom is exact only under that precondition. The
+ * Task-2 call site asserts it rather than this header (kept assertion-free).
+ */
 inline bool
 blocksMatch(uint64_t a, uint64_t b, uint64_t burstSize)
 {
