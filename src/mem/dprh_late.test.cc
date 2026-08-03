@@ -17,12 +17,13 @@ TEST(DprhLate, BlocksMatchAlignsToBurst)
     EXPECT_FALSE(blocksMatch(0x1000, 0x1040, 64));
 }
 
-// A demand is "late" iff a PREFETCH to its block is still queued when it arrives.
+// A demand is "late" iff a PREFETCH to its block is still queued when it
+// arrives.
 TEST(DprhLate, DemandLateWhenPrefetchToBlockQueued)
 {
     std::vector<QueuedRead> q = {
-        {0x2000, /*isPrefetch=*/true},   // queued prefetch to block 0x2000
-        {0x3000, /*isPrefetch=*/false},  // a queued demand (ignored)
+        {0x2000, /*isPrefetch=*/true},  // queued prefetch to block 0x2000
+        {0x3000, /*isPrefetch=*/false}, // a queued demand (ignored)
     };
     EXPECT_TRUE(demandHasQueuedPrefetch(q, /*demandAddr=*/0x2038, 64));
 }

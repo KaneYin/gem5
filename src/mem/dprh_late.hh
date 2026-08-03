@@ -5,8 +5,8 @@
  * prefetch is still queued at the memory controller (not yet serviced) -- the
  * timeliness headroom DPRH's Phase-2 harvesting targets. Factored out of
  * MemCtrl::addToReadQueue so the block-match logic is unit-testable without a
- * full controller (mirrors dprh_hslot.hh / dprh_demand_first.hh). Holds no gem5
- * timing state and mutates nothing.
+ * full controller (mirrors dprh_hslot.hh / dprh_demand_first.hh). Holds no
+ * gem5 timing state and mutates nothing.
  */
 #ifndef __MEM_DPRH_LATE_HH__
 #define __MEM_DPRH_LATE_HH__
