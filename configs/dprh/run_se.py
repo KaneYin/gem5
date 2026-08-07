@@ -119,6 +119,18 @@ def attach_private_caches(cpu, pf_kind):
     cpu.icache.mem_side = cpu.tol2bus.cpu_side_ports
     cpu.dcache.mem_side = cpu.tol2bus.cpu_side_ports
 
+    # X86 page-table walker ports (mmu.itb.walker.port / mmu.dtb.walker.port).
+    # They are RequestPorts that route table walks into the memory system, so
+    # they must be connected (route them through the L2 bus, like gem5's own
+    # addPrivateSplitL1Caches). This is ALSO required for the CPU switch:
+    # BaseMMU::takeOverFrom (mmu.cc) transfers these ports with
+    # Port::takeOverFrom, which asserts the old CPU's walker ports are connected.
+    # Unconnected request ports do not fail m5.instantiate(), so a missing
+    # connection only surfaces as an abort at switchCpus (tick 0).
+    cpu.mmu.connectWalkerPorts(
+        cpu.tol2bus.cpu_side_ports, cpu.tol2bus.cpu_side_ports
+    )
+
     cpu.l2cache = C.L2()
     pf = C.make_prefetcher(pf_kind)
     if pf is not None:
