@@ -189,17 +189,25 @@ system.cpu.interrupts[0].int_responder = system.tollcbus.mem_side_ports
 # ---------------------------------------------------------------------------
 # Fast-forward schedule: stop Atomic after ff-offset insts, then switch.
 # ---------------------------------------------------------------------------
-if args.ff_offset > 0:
-    system.cpu.max_insts_any_thread = args.ff_offset
+# gem5's switch model requires the primary CPU to run (so startup() fires) BEFORE
+# m5.switchCpus(): switching straight after m5.instantiate() trips O3
+# Fetch::startupStage()'s `assert(priorityList.empty())`, because switchCpus
+# activates thread contexts before the O3 pipeline stages have been started up.
+# So always fast-forward at least one instruction on the Atomic and always
+# m5.simulate() before the switch (this is exactly what Simulation.py does).
+# --ff-offset 0 therefore means "minimal fast-forward" (1 inst) -- fine for the
+# V1 / elaboration-smoke checks, and the measure window is still exactly
+# --measure instructions on O3.
+ff_insts = max(args.ff_offset, 1)
+system.cpu.max_insts_any_thread = ff_insts
 
 root = Root(full_system=False, system=system)
 m5.instantiate()
 
-# --- Phase 1: fast-forward on Atomic ---
-if args.ff_offset > 0:
-    print(f"[dprh] fast-forwarding {args.ff_offset} insts on AtomicSimpleCPU")
-    exit_event = m5.simulate()
-    print(f"[dprh] ff exit: {exit_event.getCause()}")
+# --- Phase 1: fast-forward on Atomic (always runs, >=1 inst, triggers startup) ---
+print(f"[dprh] fast-forwarding {ff_insts} insts on AtomicSimpleCPU")
+exit_event = m5.simulate()
+print(f"[dprh] ff exit: {exit_event.getCause()}")
 
 # --- Switch to O3 (the measured core) ---
 system.mem_mode = "timing"
