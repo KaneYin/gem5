@@ -146,6 +146,13 @@ for cpu in (system.cpu, system.o3):
     cpu.workload = process
     cpu.createThreads()
     cpu.createInterruptController()
+    # X86: the local APIC is memory-mapped, so its PIO and interrupt-message
+    # ports must be connected to the membus. Without this, X86ISA::Interrupts::
+    # init() aborts (SIGABRT / exit 134). Both CPUs are wired (only one is
+    # switched-in at a time, so there is no runtime PIO-range conflict).
+    cpu.interrupts[0].pio = system.membus.mem_side_ports
+    cpu.interrupts[0].int_requestor = system.membus.cpu_side_ports
+    cpu.interrupts[0].int_responder = system.membus.mem_side_ports
 
 # ---------------------------------------------------------------------------
 # Fast-forward schedule: stop Atomic after ff-offset insts, then switch.
