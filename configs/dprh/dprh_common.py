@@ -104,8 +104,11 @@ def make_mem_ctrl(config, a_guard=None):
     ctrl.dram.addr_mapping = FROZEN["addr_mapping"]
     ctrl.dram.page_policy = FROZEN["page_policy"]
     ctrl.mem_sched_policy = FROZEN["mem_sched_policy"]
-    ctrl.read_buffer_size = FROZEN["read_buffer_size"]
-    ctrl.write_buffer_size = FROZEN["write_buffer_size"]
+    # read/write queue depths are params of the memory INTERFACE (MemInterface),
+    # not the controller -- assigning them on `ctrl` raises "Invalid assignment
+    # for Class MemCtrl with parameter read_buffer_size" at elaboration.
+    ctrl.dram.read_buffer_size = FROZEN["read_buffer_size"]
+    ctrl.dram.write_buffer_size = FROZEN["write_buffer_size"]
     # Scheduler-layer flags (params added in Tasks 6-8). Default-off keeps an
     # unflagged build == stock gem5; here we set them per config profile.
     ctrl.enable_filter = config in ("B1", "B2", "DPRH")
