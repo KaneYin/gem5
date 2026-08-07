@@ -81,9 +81,12 @@ system.mem_ranges = [AddrRange("2GB")]
 # ---------------------------------------------------------------------------
 system.cpu = AtomicSimpleCPU(switched_out=False, cpu_id=0)
 system.o3 = X86O3CPU(switched_out=True, cpu_id=0)
-# The System param resolves via Parent.any (o3 is a child of `system`), but set
-# it explicitly to mirror the reference switch flow (Simulation.py) -- defensive.
-system.o3.system = system
+# NOTE: do NOT set `system.o3.system = system` here. At this point `system` has
+# no parent, so assigning it as an attribute of o3 makes it a *child* of o3 --
+# while o3 is already a child of system -- creating a parent cycle that sends
+# SimObject.path() into infinite recursion at Root() construction. The BaseCPU
+# `system` param (Param.System(Parent.any)) resolves on its own once Root(system=
+# system) establishes the tree, exactly as it does for system.cpu.
 
 # ---------------------------------------------------------------------------
 # Interconnect + last-level cache + memory controller.
