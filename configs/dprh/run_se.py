@@ -167,8 +167,16 @@ system.mem_mode = "timing"
 m5.switchCpus(system, [(system.cpu, system.o3)])
 
 # --- Phase 2: warm-up on O3 (no stats), then reset ---
+# NOTE: assigning system.o3.max_insts_any_thread here would be a NO-OP.
+# BaseCPU schedules its instruction-stop event exactly once, in init(), from
+# params().max_insts_any_thread captured at m5.instantiate() -- when o3 was
+# switched_out with the default 0. A post-instantiate Python assignment is never
+# read back, so the warmup/measure windows would not exist and the whole run
+# would execute in the warmup phase. Use scheduleInstStop(tid, insts, cause),
+# which schedules an exit at (current committed inst count + insts) on the
+# now-switched-in core -- the supported way to bound a phase by instructions.
 if args.warmup > 0:
-    system.o3.max_insts_any_thread = args.warmup
+    system.o3.scheduleInstStop(0, args.warmup, "dprh warmup complete")
     print(f"[dprh] warming {args.warmup} insts on X86O3CPU")
     exit_event = m5.simulate()
     print(f"[dprh] warmup exit: {exit_event.getCause()}")
@@ -176,7 +184,7 @@ if args.warmup > 0:
 m5.stats.reset()
 
 # --- Phase 3: measure on O3 ---
-system.o3.max_insts_any_thread = args.measure
+system.o3.scheduleInstStop(0, args.measure, "dprh measure complete")
 print(f"[dprh] measuring {args.measure} insts on X86O3CPU")
 exit_event = m5.simulate()
 print(f"[dprh] measure exit: {exit_event.getCause()}")
