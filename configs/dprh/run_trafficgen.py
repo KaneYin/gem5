@@ -78,7 +78,10 @@ page_size = int(
 # Frozen address mapping enum (RoRaBaCoCh) for the generators.
 addr_map_enum = mo.AddrMap(C.FROZEN["addr_mapping"])
 
-max_addr = AddrRange("2GB").end
+# createDram's end_addr arg is bound as a plain int (SupportsInt); AddrRange.end
+# is an Addr object, which pybind rejects -- convert to int (AddrRange itself
+# does int(self.end) internally, so this is exact).
+max_addr = int(AddrRange("2GB").end)
 
 # ---------------------------------------------------------------------------
 # Two generators -> membus -> MemCtrl.
