@@ -81,6 +81,9 @@ system.mem_ranges = [AddrRange("2GB")]
 # ---------------------------------------------------------------------------
 system.cpu = AtomicSimpleCPU(switched_out=False, cpu_id=0)
 system.o3 = X86O3CPU(switched_out=True, cpu_id=0)
+# The System param resolves via Parent.any (o3 is a child of `system`), but set
+# it explicitly to mirror the reference switch flow (Simulation.py) -- defensive.
+system.o3.system = system
 
 # ---------------------------------------------------------------------------
 # Interconnect + last-level cache + memory controller.
@@ -121,10 +124,15 @@ def attach_private_caches(cpu, pf_kind):
     cpu.l2cache.mem_side = system.membus.cpu_side_ports
 
 
-# Attach caches to BOTH CPUs so takeOverFrom sees an equivalent hierarchy.
-# (gem5 requires matching port topology across the switch.)
+# Standard gem5 switched-CPU model (see configs/common/Simulation.py): attach
+# the cache hierarchy -- and, below, the interrupt controller -- to the PRIMARY
+# cpu only. m5.switchCpus() -> BaseCPU::takeOverFrom (base.cc: `interrupts =
+# oldCPU->interrupts`, plus inst/data port takeover) transfers both the cache
+# ports and the interrupt controller to system.o3. The switch target must NOT be
+# pre-wired, or its ports double-connect. This also keeps the prefetcher under
+# `system.cpu.l2cache` (the name the V1/Task-4 handoff greps) active after the
+# switch, since o3 drives the primary's L2 via the port takeover.
 attach_private_caches(system.cpu, pf_kind)
-attach_private_caches(system.o3, pf_kind)
 
 # LLC between membus and MemCtrl.
 system.llc.cpu_side = system.membus.mem_side_ports
@@ -142,17 +150,26 @@ process.cmd = [args.cmd] + (args.options.split() if args.options else [])
 process.executable = args.cmd
 system.workload = SEWorkload.init_compatible(args.cmd)
 
+# Both CPUs need the workload + thread contexts (Simulation.py sets these on
+# switch_cpus too), but ONLY the primary gets an interrupt controller -- it is
+# moved to o3 by takeOverFrom, and switch_cpus never call
+# createInterruptController.
 for cpu in (system.cpu, system.o3):
     cpu.workload = process
     cpu.createThreads()
-    cpu.createInterruptController()
-    # X86: the local APIC is memory-mapped, so its PIO and interrupt-message
-    # ports must be connected to the membus. Without this, X86ISA::Interrupts::
-    # init() aborts (SIGABRT / exit 134). Both CPUs are wired (only one is
-    # switched-in at a time, so there is no runtime PIO-range conflict).
-    cpu.interrupts[0].pio = system.membus.mem_side_ports
-    cpu.interrupts[0].int_requestor = system.membus.cpu_side_ports
-    cpu.interrupts[0].int_responder = system.membus.mem_side_ports
+
+# X86 local APIC (memory-mapped). Attach its ports to the bus that actually
+# carries the memory controller -- here `tollcbus` (mem_ctrl.port =
+# tollcbus.mem_side_ports), NOT `membus`, whose mem-side is held by the
+# transparent LLC claiming the whole address range (that overlap is the
+# "two ports responding within range [0:MAX]" fatal). On tollcbus the APIC MMIO
+# (~0xFEE00000) and mem_ranges ([0:2GB)) do not overlap. Response ports (pio,
+# int_responder) attach to the responder (mem_side) side; the request port
+# (int_requestor) to the cpu_side. Primary only; takeOverFrom moves it to o3.
+system.cpu.createInterruptController()
+system.cpu.interrupts[0].pio = system.tollcbus.mem_side_ports
+system.cpu.interrupts[0].int_requestor = system.tollcbus.cpu_side_ports
+system.cpu.interrupts[0].int_responder = system.tollcbus.mem_side_ports
 
 # ---------------------------------------------------------------------------
 # Fast-forward schedule: stop Atomic after ff-offset insts, then switch.
