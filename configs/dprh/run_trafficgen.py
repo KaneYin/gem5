@@ -75,8 +75,12 @@ burst_size = int(
 page_size = int(
     dram.devices_per_rank.value * dram.device_rowbuffer_size.value
 )
-# Frozen address mapping enum (RoRaBaCoCh) for the generators.
-addr_map_enum = mo.AddrMap(C.FROZEN["addr_mapping"])
+# Frozen address mapping enum (RoRaBaCoCh) for the generators. createDram's
+# pybind binding wants the registered C++ enum (gem5::enums::AddrMap), not the
+# Python param-wrapper that mo.AddrMap(...) returns -- call .getValue() to
+# convert, the same way m5/simulate.py passes MemoryMode(...).getValue() to its
+# pybind calls.
+addr_map_enum = mo.AddrMap(C.FROZEN["addr_mapping"]).getValue()
 
 # createDram's end_addr arg is bound as a plain int (SupportsInt); AddrRange.end
 # is an Addr object, which pybind rejects -- convert to int (AddrRange itself
