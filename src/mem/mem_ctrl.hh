@@ -467,6 +467,14 @@ class MemCtrl : public qos::MemCtrl
     bool hasAgedDemand(MemPacketQueue& queue, MemInterface* mem_intr);
 
     /**
+     * DPRH Phase 1: fold one READ-scheduling decision into the H_slot stats
+     * (the schedCycles denominator + the non-H decomposition). Called only in
+     * the READ bus state (from chooseNext) so write-drain scheduling stays out
+     * of the H_slot accounting. Read-only; no timing-model duplication.
+     */
+    void recordHslotAccounting(MemPacketQueue& queue, MemInterface* mem_intr);
+
+    /**
      * Calculate burst window aligned tick
      *
      * @param cmd_tick Initial tick of command
