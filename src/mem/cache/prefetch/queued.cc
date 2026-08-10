@@ -58,10 +58,13 @@ void
 Queued::DeferredPacket::createPkt(Addr paddr, unsigned blk_size,
                                             RequestorID requestor_id,
                                             bool tag_prefetch,
+                                            bool mark_request_as_prefetch,
                                             Tick t) {
     /* Create a prefetch memory request */
+    Request::FlagsType flags =
+        mark_request_as_prefetch ? Request::PREFETCH : 0;
     RequestPtr req = std::make_shared<Request>(paddr, blk_size,
-                                                0, requestor_id);
+                                                flags, requestor_id);
 
     if (pfInfo.isSecure()) {
         req->setFlags(Request::SECURE);
@@ -104,6 +107,7 @@ Queued::Queued(const QueuedPrefetcherParams &p)
       latency(p.latency), queueSquash(p.queue_squash),
       queueFilter(p.queue_filter), cacheSnoop(p.cache_snoop),
       tagPrefetch(p.tag_prefetch),
+      markRequestAsPrefetch(p.mark_request_as_prefetch),
       throttleControlPct(p.throttle_control_percentage), statsQueued(this)
 {
 }
@@ -327,7 +331,7 @@ Queued::translationComplete(DeferredPacket *dp, bool failed,
         } else {
             Tick pf_time = curTick() + clockPeriod() * latency;
             it->createPkt(target_paddr, blkSize, requestorId, tagPrefetch,
-                          pf_time);
+                          markRequestAsPrefetch, pf_time);
             addToQueue(pfq, *it);
         }
     } else {
@@ -468,7 +472,7 @@ Queued::insert(const PacketPtr &pkt, PrefetchInfo &new_pfi,
     if (has_target_pa) {
         Tick pf_time = curTick() + clockPeriod() * latency;
         dpp.createPkt(target_paddr, blkSize, requestorId, tagPrefetch,
-                      pf_time);
+                      markRequestAsPrefetch, pf_time);
         DPRINTF(HWPrefetch, "Prefetch queued. "
                 "addr:%#x priority: %3d tick:%lld.\n",
                 new_pfi.getAddr(), priority, pf_time);

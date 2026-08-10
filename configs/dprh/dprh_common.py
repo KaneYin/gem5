@@ -74,10 +74,12 @@ def make_prefetcher(kind):
     if kind == "spp":
         pf = SignaturePathPrefetcher()
         pf.prefetch_on_access = True
+        pf.mark_request_as_prefetch = True
         return pf
     if kind == "stride":
         pf = StridePrefetcher()
         pf.prefetch_on_access = True
+        pf.mark_request_as_prefetch = True
         return pf
     if kind == "none":
         return None

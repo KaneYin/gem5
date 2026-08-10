@@ -113,10 +113,13 @@ class Queued : public Base
          * this prefetch
          * @param tag_prefetch flag to indicate if the packet needs to be
          *        tagged
+         * @param mark_request_as_prefetch set Request::PREFETCH on the
+         *        generated request
          * @param t time when the prefetch becomes ready
          */
         void createPkt(Addr paddr, unsigned blk_size, RequestorID requestor_id,
-                       bool tag_prefetch, Tick t);
+                       bool tag_prefetch, bool mark_request_as_prefetch,
+                       Tick t);
 
         /**
          * Sets the translation request needed to obtain the physical address
@@ -172,6 +175,9 @@ class Queued : public Base
 
     /** Tag prefetch with PC of generating access? */
     const bool tagPrefetch;
+
+    /** Preserve hardware-prefetch provenance in the generated Request? */
+    const bool markRequestAsPrefetch;
 
     /** Percentage of requests that can be throttled */
     const unsigned int throttleControlPct;
