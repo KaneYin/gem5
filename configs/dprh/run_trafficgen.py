@@ -5,9 +5,15 @@ Two PyTrafficGen DRAM generators feed one MemCtrl (from dprh_common):
   - a "prefetch" generator whose requests are tagged Request::PREFETCH
     (tag_prefetch=True) via the R6 prefetch-tagging patch to DramGen.
 
-Two independently controlled R6 knobs:
-  --demand-period : demand inter-arrival period (ticks) -> injection intensity
+Independent R6 controls:
+  --demand-period : demand inter-arrival period (ticks) -> demand intensity
+  --pf-period     : prefetch inter-arrival period (ticks), held fixed in sweeps
   --pf-seq-pkts   : prefetch row-locality density (num_seq_pkts) -> row hits
+
+The default mode drives both streams for H_slot attribution. The
+--calibration-pf-only mode starts only the tagged prefetch stream, so the
+aggregate DRAM readRowHitRate measures the knob being calibrated rather than a
+mixture of demand traffic, cross-stream RNG correlation, and scheduler effects.
 
 Runs in timing mode. Row-hit rate is read from DRAM stats by
 scripts/analyze_calibration.py across a --pf-seq-pkts sweep.
@@ -32,10 +38,17 @@ p = argparse.ArgumentParser(description="DPRH synthetic-traffic harness (R6)")
 p.add_argument("--config", default="B1", choices=["B0", "B1", "B2", "DPRH"])
 p.add_argument("--demand-period", type=int, default=1000,
                help="demand inter-arrival period in ticks (R6 intensity knob)")
+p.add_argument("--pf-period", type=int, default=1000,
+               help="prefetch inter-arrival period in ticks (fixed R6 control)")
 p.add_argument("--pf-seq-pkts", type=int, default=4,
                help="prefetch row-locality density: num_seq_pkts (R6 knob)")
 p.add_argument("--pf-tag", action="store_true", default=False,
                help="tag prefetch-stream requests with Request::PREFETCH")
+p.add_argument(
+    "--calibration-pf-only",
+    action="store_true",
+    help="start only the tagged prefetch stream for row-locality calibration",
+)
 p.add_argument("--period", type=int, default=100_000_000,
                help="total run period in ticks")
 p.add_argument("--rd-perc", type=int, default=100,
@@ -43,6 +56,9 @@ p.add_argument("--rd-perc", type=int, default=100,
 p.add_argument("--a-guard", type=int, default=0,
                help="aged-demand guard in cycles (sizes the AGED_DEMAND bin)")
 args = p.parse_args()
+
+if args.calibration_pf_only and not args.pf_tag:
+    p.error("--calibration-pf-only requires --pf-tag")
 
 # FIX-6: self-document the frozen config into every simout.
 print(C.frozen_summary())
@@ -144,8 +160,8 @@ def pf_trace():
         0,                    # start_addr
         max_addr,             # end_addr
         burst_size,           # blocksize
-        args.demand_period,   # min_period (share the injection cadence)
-        args.demand_period,   # max_period
+        args.pf_period,       # min_period (independent fixed PF cadence)
+        args.pf_period,       # max_period
         args.rd_perc,         # read_percent
         0,                    # data_limit
         args.pf_seq_pkts,     # num_seq_pkts (R6 row-locality knob)
@@ -165,7 +181,15 @@ def pf_trace():
     yield system.pf_gen.createExit(0)
 
 
-system.demand_gen.start(demand_trace())
+mode = "pf-only-calibration" if args.calibration_pf_only else "dual-stream"
+print(
+    f"[dprh-tgen] mode={mode} demand_period={args.demand_period} "
+    f"pf_period={args.pf_period} pf_seq_pkts={args.pf_seq_pkts} "
+    f"pf_tag={args.pf_tag}"
+)
+
+if not args.calibration_pf_only:
+    system.demand_gen.start(demand_trace())
 system.pf_gen.start(pf_trace())
 
 exit_event = m5.simulate(args.period)
