@@ -93,13 +93,21 @@ system.o3 = X86O3CPU(switched_out=True, cpu_id=0)
 # The L1/L2 private caches are attached per-CPU below; the LLC and membus are
 # shared and persist across the CPU switch.
 # ---------------------------------------------------------------------------
-system.membus = SystemXBar()
+# This bus is above the LLC, so it is not the final point of coherency.
+# Coherency-only packets such as CleanEvict must be allowed to reach the LLC
+# rather than being consumed before the last-level cache observes them.
+system.membus = SystemXBar(point_of_coherency=False)
 system.system_port = system.membus.cpu_side_ports
 
 # LLC (2 MB) sits between the private-L2 mem side and the memory controller.
 # Topology: L1 -> tol2bus(L2XBar) -> L2(+prefetcher) -> membus -> LLC -> MemCtrl
 system.llc = C.LLC()
-system.tollcbus = L2XBar(clk_domain=system.clk_domain)
+# The final coherent bus below the LLC is the real point of coherency. It must
+# sink CleanEvict and other non-memory coherency traffic before MemCtrl, whose
+# timing request interface accepts only reads and writes.
+system.tollcbus = L2XBar(
+    clk_domain=system.clk_domain, point_of_coherency=True
+)
 
 
 def attach_private_caches(cpu, pf_kind):
