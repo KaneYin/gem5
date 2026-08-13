@@ -762,6 +762,13 @@ class DRAMInterface : public MemInterface
     }
 
     /**
+     * Read-only DPRH command-legality query. Reuses the refresh state,
+     * rdAllowedAt/wrAllowedAt, and minBankPrep calculation already consumed by
+     * chooseNextFRFCFS; it does not issue a command or update timing state.
+     */
+    bool isCommandReady(MemPacket *pkt, Tick min_col_at) const override;
+
+    /**
      * DPRH (read-only): is @p pkt a row-buffer hit right now? Reads the same
      * per-bank open-row state the FR-FCFS ranker already inspects
      * (chooseNextFRFCFS: `bank.openRow == pkt->row`); const, no timing math,

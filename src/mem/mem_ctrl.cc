@@ -628,6 +628,15 @@ MemCtrl::chooseNext(MemPacketQueue& queue, Tick extra_col_delay,
     MemPacketQueue::iterator ret = queue.end();
 
     if (!queue.empty()) {
+        // H_slot is defined over every non-empty FR-FCFS READ scheduling
+        // decision, including singleton queues. Account before the queue-size
+        // fast path; exclude FCFS and write-drain decisions explicitly.
+        if (dprh::shouldRecordHslotDecision(queue.size(),
+                                            memSchedPolicy == enums::frfcfs,
+                                            mem_intr->busState == READ)) {
+            recordHslotAccounting(queue, extra_col_delay, mem_intr);
+        }
+
         if (queue.size() == 1) {
             // available rank corresponds to state refresh idle
             MemPacket* mem_pkt = *(queue.begin());
@@ -653,19 +662,6 @@ MemCtrl::chooseNext(MemPacketQueue& queue, Tick extra_col_delay,
                 }
             }
         } else if (memSchedPolicy == enums::frfcfs) {
-            // --- DPRH H_slot accounting (§5) ------------------------------
-            // schedCycles is the H_slot DENOMINATOR: the fraction of *read*
-            // scheduling decisions that are harvestable idle slots. chooseNext
-            // also runs to drain the write queue (busState == WRITE); those
-            // decisions must not enter the denominator or the decomposition (a
-            // write looks like a non-prefetch "demand" and would inflate
-            // schedCycles and the DEMAND_READY bin), so the accounting is gated
-            // to the READ bus state. Computed read-only (packetReady + open-row
-            // query), never a parallel timing model.
-            if (mem_intr->busState == READ) {
-                recordHslotAccounting(queue, mem_intr);
-            }
-            // -------------------------------------------------------------
             // DPRH seam: inert unless enableDprh (Phase 2 fills this in).
             if (enableDprh) {
                 auto forced = dprhChooseNext(queue, extra_col_delay, mem_intr);
@@ -742,20 +738,6 @@ MemCtrl::chooseNextFRFCFS(MemPacketQueue& queue, Tick extra_col_delay,
 }
 
 bool
-MemCtrl::hasLegalDemand(MemPacketQueue& queue, MemInterface* mem_intr)
-{
-    // Uses ONLY the existing timing checker (packetReady/burstReady); no
-    // parallel timing model (research_plan.md §3/Phase 3 warning).
-    for (auto* mp : queue) {
-        if (mp->pseudoChannel != mem_intr->pseudoChannel)
-            continue;
-        if (!mp->pkt->req->isPrefetch() && packetReady(mp, mem_intr))
-            return true;
-    }
-    return false;
-}
-
-bool
 MemCtrl::hasAgedDemand(MemPacketQueue& queue, MemInterface* mem_intr)
 {
     // Read-only: a demand's age is curTick() - entryTime; A_guard is the
@@ -774,53 +756,43 @@ MemCtrl::hasAgedDemand(MemPacketQueue& queue, MemInterface* mem_intr)
 }
 
 void
-MemCtrl::recordHslotAccounting(MemPacketQueue& queue, MemInterface* mem_intr)
+MemCtrl::recordHslotAccounting(MemPacketQueue &queue, Tick extra_col_delay,
+                               MemInterface *mem_intr)
 {
-    // DPRH Phase 1 (§5). Invoked only in the READ bus state (see chooseNext),
-    // so write-drain scheduling never enters the H_slot denominator or the
-    // decomposition. Computed with the existing timing checker
-    // (packetReady/burstReady) and a read-only open-row query only -- never a
-    // parallel timing model. FIX-1 wired in the full predicate (row-hit +
-    // turnaround).
+    // DPRH Phase 1 (§5). Use the exact seamless-issue boundary passed to the
+    // baseline FR-FCFS selector below. isCommandReady is a read-only query
+    // over the interface's existing refresh, bank-preparation, and column
+    // timing state; it never updates DRAM timing or changes the selected
+    // packet.
+    const Tick min_col_at =
+        std::max(mem_intr->nextBurstAt + extra_col_delay, curTick());
+
     ++stats.schedCycles;
-    if (hasLegalDemand(queue, mem_intr)) {
-        ++stats.nonHslotReason[DEMAND_READY];
-        return;
-    }
-    ++stats.cyclesNoLegalDemand;
-    // The TRUE H_slot predicate (research_plan.md §5) needs three conjuncts on
-    // the candidate prefetch -- timing-ready, row-hit, and turnaround-safe --
-    // not just timing-ready. One read-only pass summarizes the per-channel read
-    // queue; the verdict is delegated to the pure dprh::classifyHslotCycle so it
-    // is unit-testable. isRowHit only reads existing bank open-row state.
-    bool anyReadyPrefetch = false;
-    bool anyReadyRowHit = false;
-    bool anyHarvestable = false;
+    dprh::HslotCycleInputs inputs;
     for (auto* mp : queue) {
         if (mp->pseudoChannel != mem_intr->pseudoChannel)
             continue;
-        if (!mp->pkt->req->isPrefetch() || !packetReady(mp, mem_intr))
-            continue;
-        anyReadyPrefetch = true;
-        if (!mem_intr->isRowHit(mp))
-            continue;
-        anyReadyRowHit = true;
-        // Turnaround-safe iff issuing mp keeps the current bus direction. This
-        // runs only in READ bus state and all read-queue prefetches are reads,
-        // so it is effectively always true here; wired in for definitional
-        // correctness (see FIX-1 in PHASE_LOG.md).
+        const bool is_prefetch = mp->pkt->req->isPrefetch();
+        const bool command_ready = mem_intr->isCommandReady(mp, min_col_at);
+        const bool row_hit = is_prefetch && mem_intr->isRowHit(mp);
         const bool turnaroundSafe = mp->isRead()
             ? (mem_intr->busState == READ)
             : (mem_intr->busState == WRITE);
-        if (turnaroundSafe) {
-            anyHarvestable = true;
+
+        dprh::observeHslotCandidate(inputs, is_prefetch, command_ready,
+                                    row_hit, turnaroundSafe);
+        if (inputs.anyLegalDemand) {
             break;
         }
     }
 
-    const dprh::HslotVerdict v = dprh::classifyHslotCycle(
-            /*anyLegalDemand=*/false, anyReadyPrefetch, anyReadyRowHit,
-            anyHarvestable);
+    const dprh::HslotVerdict v = dprh::classifyHslotCycle(inputs);
+    if (v.reason == dprh::HslotReason::DemandReady) {
+        ++stats.nonHslotReason[DEMAND_READY];
+        return;
+    }
+
+    ++stats.cyclesNoLegalDemand;
     if (v.readyPrefetchProxy)
         ++stats.cyclesReadyPrefetchNoDemand;
     if (v.hslot)

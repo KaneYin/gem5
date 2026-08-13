@@ -452,12 +452,6 @@ class MemCtrl : public qos::MemCtrl
         NUM_NON_HSLOT_REASONS
     };
 
-    /** True iff any timing-legal *demand* (non-prefetch) read command exists in
-     *  `queue` this cycle, using ONLY the existing timing checker
-     *  (packetReady/burstReady). Single private helper so Phase 1 can
-     *  unit-test the predicate. */
-    bool hasLegalDemand(MemPacketQueue& queue, MemInterface* mem_intr);
-
     /**
      * DPRH Phase 1: does the read queue hold a demand that has aged past
      * A_guard (dprhAGuard cycles)? Read-only; uses entryTime + the controller
@@ -468,11 +462,14 @@ class MemCtrl : public qos::MemCtrl
 
     /**
      * DPRH Phase 1: fold one READ-scheduling decision into the H_slot stats
-     * (the schedCycles denominator + the non-H decomposition). Called only in
-     * the READ bus state (from chooseNext) so write-drain scheduling stays out
-     * of the H_slot accounting. Read-only; no timing-model duplication.
+     * (the schedCycles denominator + the non-H decomposition). The caller
+     * supplies the same extra column delay used by FR-FCFS, allowing the
+     * memory interface to query its existing command-ready state at the exact
+     * same min_col_at boundary. Called only for FR-FCFS READ decisions, so
+     * write-drain scheduling stays out of the accounting.
      */
-    void recordHslotAccounting(MemPacketQueue& queue, MemInterface* mem_intr);
+    void recordHslotAccounting(MemPacketQueue &queue, Tick extra_col_delay,
+                               MemInterface *mem_intr);
 
     /**
      * Calculate burst window aligned tick
@@ -642,8 +639,8 @@ class MemCtrl : public qos::MemCtrl
         // --- DPRH Phase 1 stats (H_slot inputs + decomposition + latency) ---
         // (research_plan.md §5). Phase 0 requires only that these exist, are
         // named, and are nonzero/sane; the precise H_slot predicate is
-        // validated in Phase 1. All computed with the existing timing checker
-        // (packetReady/burstReady) -- never a parallel timing model.
+        // validated in Phase 1. Command readiness is read from the existing
+        // FR-FCFS/DRAM state at min_col_at -- never a parallel timing model.
         statistics::Scalar schedCycles;             // frfcfs decisions observed
         statistics::Scalar cyclesNoLegalDemand;     // no timing-legal demand cmd
         statistics::Scalar cyclesHslot;             // TRUE H_slot numerator (§5):

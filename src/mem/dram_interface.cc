@@ -46,6 +46,7 @@
 #include "debug/DRAM.hh"
 #include "debug/DRAMPower.hh"
 #include "debug/DRAMState.hh"
+#include "mem/dprh_hslot.hh"
 #include "sim/system.hh"
 
 namespace gem5
@@ -55,6 +56,41 @@ using namespace Data;
 
 namespace memory
 {
+
+bool
+DRAMInterface::isCommandReady(MemPacket *pkt, Tick min_col_at) const
+{
+    if (!pkt->isDram() || pkt->pseudoChannel != pseudoChannel) {
+        return false;
+    }
+
+    const bool rank_refresh_idle = burstReady(pkt);
+    if (!rank_refresh_idle) {
+        return false;
+    }
+
+    const Bank &bank = ranks[pkt->rank]->banks[pkt->bank];
+    const Tick col_allowed_at =
+        pkt->isRead() ? bank.rdAllowedAt : bank.wrAllowedAt;
+
+    // A row hit needs no PRE/ACT preparation. For a closed/conflicting row,
+    // ask the existing FR-FCFS minBankPrep calculation whether the singleton
+    // candidate's preparation fits behind the current data-bus boundary. The
+    // singleton queue prevents another bank from answering for this packet.
+    bool bank_prep_ready = bank.openRow == pkt->row;
+    if (!bank_prep_ready) {
+        const MemPacketQueue singleton{pkt};
+        std::vector<uint32_t> earliest_banks;
+        bool hidden_bank_prep;
+        std::tie(earliest_banks, hidden_bank_prep) =
+            minBankPrep(singleton, min_col_at);
+        bank_prep_ready = hidden_bank_prep && bits(earliest_banks[pkt->rank],
+                                                   pkt->bank, pkt->bank);
+    }
+
+    return dprh::frfcfsCommandReady(rank_refresh_idle, bank_prep_ready,
+                                    col_allowed_at, min_col_at);
+}
 
 std::pair<MemPacketQueue::iterator, Tick>
 DRAMInterface::chooseNextFRFCFS(MemPacketQueue& queue, Tick min_col_at) const

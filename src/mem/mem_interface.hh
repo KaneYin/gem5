@@ -290,6 +290,21 @@ class MemInterface : public AbstractMemory
     virtual bool burstReady(MemPacket* pkt) const = 0;
 
     /**
+     * DPRH accounting query: is @p pkt's next column command timing-legal at
+     * @p min_col_at under this interface's existing FR-FCFS state?
+     *
+     * Implementations must only inspect the same refresh, bank-preparation,
+     * and column-ready state used by chooseNextFRFCFS; they must not update
+     * timing state. Interfaces without a command-level implementation return
+     * false so they cannot manufacture an H_slot.
+     */
+    virtual bool
+    isCommandReady(MemPacket * /*pkt*/, Tick /*min_col_at*/) const
+    {
+        return false;
+    }
+
+    /**
      * DPRH (read-only): would servicing @p pkt right now be a row-buffer hit,
      * i.e. is the packet's row already the open row of its bank? This inspects
      * existing bank bookkeeping only and performs no timing computation or

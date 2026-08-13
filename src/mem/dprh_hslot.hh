@@ -11,10 +11,41 @@
 #ifndef __MEM_DPRH_HSLOT_HH__
 #define __MEM_DPRH_HSLOT_HH__
 
+#include <cstddef>
+
+#include "base/types.hh"
+
 namespace gem5
 {
 namespace dprh
 {
+
+/**
+ * Whether one queued request's next column command is ready at the same
+ * seamless-issue boundary used by gem5's FR-FCFS selector.
+ *
+ * The caller obtains all four inputs from the memory interface's existing
+ * refresh, bank-preparation, and RD/WR timing state. Keeping this final
+ * boolean combination pure makes the boundary cases unit-testable without
+ * introducing a second timing model.
+ */
+inline bool
+frfcfsCommandReady(bool rankRefreshIdle, bool bankPrepReady, Tick colAllowedAt,
+                   Tick minColAt)
+{
+    return rankRefreshIdle && bankPrepReady && colAllowedAt <= minColAt;
+}
+
+/**
+ * H_slot is defined over non-empty FR-FCFS READ scheduling decisions. This
+ * deliberately includes singleton queues and excludes FCFS and write-drain
+ * arbitration.
+ */
+inline bool
+shouldRecordHslotDecision(std::size_t queueSize, bool isFrfcfs, bool readBus)
+{
+    return queueSize != 0 && isFrfcfs && readBus;
+}
 
 /** Why a scheduling cycle did (or did not) count as an H_slot. */
 enum class HslotReason
@@ -34,6 +65,44 @@ struct HslotVerdict
                              // bound)
     HslotReason reason;      // decomposition bin
 };
+
+/** Single-pass summaries accumulated while inspecting one read queue. */
+struct HslotCycleInputs
+{
+    bool anyLegalDemand = false;
+    bool anyReadyPrefetch = false;
+    bool anyReadyRowHit = false;
+    bool anyHarvestable = false;
+};
+
+/**
+ * Fold one queue entry into the H_slot summaries. A ready demand dominates the
+ * final verdict; a prefetch must additionally be a row hit and preserve the
+ * current bus direction to become harvestable.
+ */
+inline void
+observeHslotCandidate(HslotCycleInputs &inputs, bool isPrefetch,
+                      bool commandReady, bool rowHit, bool turnaroundSafe)
+{
+    if (!commandReady) {
+        return;
+    }
+
+    if (!isPrefetch) {
+        inputs.anyLegalDemand = true;
+        return;
+    }
+
+    inputs.anyReadyPrefetch = true;
+    if (!rowHit) {
+        return;
+    }
+
+    inputs.anyReadyRowHit = true;
+    if (turnaroundSafe) {
+        inputs.anyHarvestable = true;
+    }
+}
 
 /**
  * Classify one FR-FCFS scheduling cycle for H_slot accounting.
@@ -71,6 +140,14 @@ classifyHslotCycle(bool anyLegalDemand, bool anyReadyPrefetch,
         return {false, proxy, HslotReason::PfNotRowHit};
     }
     return {false, proxy, HslotReason::TurnaroundUnsafe};
+}
+
+/** Convenience overload for the queue-summary representation. */
+inline HslotVerdict
+classifyHslotCycle(const HslotCycleInputs &inputs)
+{
+    return classifyHslotCycle(inputs.anyLegalDemand, inputs.anyReadyPrefetch,
+                              inputs.anyReadyRowHit, inputs.anyHarvestable);
 }
 
 /**
